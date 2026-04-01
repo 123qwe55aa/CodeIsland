@@ -373,16 +373,9 @@ struct InstanceRow: View {
         return "\(hours)h"
     }
 
-    /// Short terminal name derived from tty path
+    /// Terminal app name — auto-detected from process tree
     private var terminalTag: String {
-        if session.isInTmux {
-            return "cmux"
-        }
-        if let tty = session.tty {
-            let name = URL(fileURLWithPath: tty).lastPathComponent
-            return name
-        }
-        return "term"
+        session.terminalApp ?? (session.isInTmux ? "tmux" : "term")
     }
 
     /// Accent color based on phase

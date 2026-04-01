@@ -123,6 +123,13 @@ actor SessionStore {
         if let pid = event.pid {
             let tree = ProcessTreeBuilder.shared.buildTree()
             session.isInTmux = ProcessTreeBuilder.shared.isInTmux(pid: pid, tree: tree)
+            // Detect terminal app name
+            if session.terminalApp == nil,
+               let termPid = ProcessTreeBuilder.shared.findTerminalPid(forProcess: pid, tree: tree),
+               let termInfo = tree[termPid] {
+                let command = URL(fileURLWithPath: termInfo.command).lastPathComponent
+                session.terminalApp = TerminalAppRegistry.displayName(for: command)
+            }
         }
         if let tty = event.tty {
             session.tty = tty.replacingOccurrences(of: "/dev/", with: "")

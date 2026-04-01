@@ -22,6 +22,8 @@ struct SessionState: Equatable, Identifiable, Sendable {
     var pid: Int?
     var tty: String?
     var isInTmux: Bool
+    /// Detected terminal app name (e.g., "Ghostty", "Warp", "iTerm2", "cmux", "Terminal")
+    var terminalApp: String?
 
     // MARK: - State Machine
 
@@ -71,6 +73,7 @@ struct SessionState: Equatable, Identifiable, Sendable {
         pid: Int? = nil,
         tty: String? = nil,
         isInTmux: Bool = false,
+        terminalApp: String? = nil,
         phase: SessionPhase = .idle,
         chatItems: [ChatHistoryItem] = [],
         toolTracker: ToolTracker = ToolTracker(),
@@ -89,6 +92,7 @@ struct SessionState: Equatable, Identifiable, Sendable {
         self.pid = pid
         self.tty = tty
         self.isInTmux = isInTmux
+        self.terminalApp = terminalApp
         self.phase = phase
         self.chatItems = chatItems
         self.toolTracker = toolTracker

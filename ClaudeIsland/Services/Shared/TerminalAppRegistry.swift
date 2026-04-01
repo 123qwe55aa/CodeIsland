@@ -53,6 +53,38 @@ struct TerminalAppRegistry: Sendable {
         "com.cmuxterm.app"
     ]
 
+    /// Map a process command name to a friendly display name
+    static func displayName(for command: String) -> String {
+        let lower = command.lowercased()
+
+        // Known mappings (process name → display name)
+        let mappings: [(match: String, name: String)] = [
+            ("ghostty", "Ghostty"),
+            ("warp", "Warp"),
+            ("stable", "Warp"),      // Warp's binary is called "stable"
+            ("iterm", "iTerm2"),
+            ("terminal", "Terminal"),
+            ("alacritty", "Alacritty"),
+            ("kitty", "Kitty"),
+            ("wezterm", "WezTerm"),
+            ("hyper", "Hyper"),
+            ("tabby", "Tabby"),
+            ("cmux", "cmux"),
+            ("code", "VS Code"),
+            ("cursor", "Cursor"),
+            ("windsurf", "Windsurf"),
+            ("zed", "Zed"),
+            ("rio", "Rio"),
+            ("tmux", "tmux"),
+        ]
+
+        for (match, name) in mappings {
+            if lower.contains(match) { return name }
+        }
+
+        return command // fallback to raw command name
+    }
+
     /// Check if an app name or command path is a known terminal
     static func isTerminal(_ appNameOrCommand: String) -> Bool {
         let lower = appNameOrCommand.lowercased()
