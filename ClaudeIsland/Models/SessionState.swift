@@ -173,13 +173,25 @@ struct SessionState: Equatable, Identifiable, Sendable {
         }
 
         // Fallback: directly read JSONL to extract first user message
-        return Self.directParseFirstMessage(sessionId: sessionId, cwd: cwd)
+        if let msg = Self.directParseFirstMessage(sessionId: sessionId, cwd: cwd) {
+            return msg
+        }
+        // Ultimate fallback: show cwd and sessionId for debugging
+        return nil
     }
 
     /// Emergency fallback: read JSONL directly without going through ConversationParser
     private static func directParseFirstMessage(sessionId: String, cwd: String) -> String? {
         let projectDir = cwd.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ".", with: "-")
         let path = NSHomeDirectory() + "/.claude/projects/" + projectDir + "/" + sessionId + ".jsonl"
+
+        // Log path for debugging
+        let log = "directParse: sid=\(sessionId.prefix(8)) cwd=\(cwd) path=\(path) exists=\(FileManager.default.fileExists(atPath: path))\n"
+        let logPath = NSHomeDirectory() + "/.claude/.codeisland-direct.log"
+        if let d = log.data(using: .utf8) {
+            if let fh = FileHandle(forWritingAtPath: logPath) { fh.seekToEndOfFile(); fh.write(d); fh.closeFile() }
+            else { FileManager.default.createFile(atPath: logPath, contents: d) }
+        }
 
         guard let data = FileManager.default.contents(atPath: path),
               let content = String(data: data, encoding: .utf8) else { return nil }
