@@ -133,6 +133,48 @@ struct SessionState: Equatable, Identifiable, Sendable {
         conversationInfo.summary ?? conversationInfo.firstUserMessage ?? projectName
     }
 
+    /// Smart one-line summary synthesized from session data.
+    /// - If `conversationInfo.summary` exists, use it directly.
+    /// - Otherwise construct: "[firstUserMessage truncated to 30 chars] → [lastToolName]: [lastMessage truncated to 40 chars]"
+    /// - If no firstUserMessage, use projectName.
+    /// - If no lastToolName, skip the arrow part.
+    var smartSummary: String? {
+        if let summary = conversationInfo.summary {
+            return summary
+        }
+
+        let prefix: String
+        if let first = conversationInfo.firstUserMessage {
+            prefix = first.count > 30 ? String(first.prefix(30)) + "..." : first
+        } else {
+            prefix = projectName
+        }
+
+        if let toolName = conversationInfo.lastToolName {
+            let lastPart: String
+            if let last = conversationInfo.lastMessage {
+                lastPart = last.count > 40 ? String(last.prefix(40)) + "..." : last
+            } else {
+                lastPart = ""
+            }
+            if lastPart.isEmpty {
+                return "\(prefix) → \(toolName)"
+            }
+            return "\(prefix) → \(toolName): \(lastPart)"
+        }
+
+        // No tool name — just return prefix if we have any useful info
+        if conversationInfo.firstUserMessage != nil || conversationInfo.lastMessage != nil {
+            if let last = conversationInfo.lastMessage {
+                let lastPart = last.count > 40 ? String(last.prefix(40)) + "..." : last
+                return "\(prefix): \(lastPart)"
+            }
+            return prefix
+        }
+
+        return nil
+    }
+
     /// Best hint for matching window title
     var windowHint: String {
         conversationInfo.summary ?? projectName

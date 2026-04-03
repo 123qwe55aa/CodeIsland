@@ -108,7 +108,9 @@ struct NotchView: View {
             let status = session.pendingToolName.map { L10n.approveWhat($0) } ?? L10n.needsApproval
             return (project, status)
         case .waitingForInput:
-            return (project, L10n.done)
+            // Show smart summary when available, otherwise fall back to "done"
+            let status = session.smartSummary ?? L10n.done
+            return (project, status)
         case .compacting:
             return (project, L10n.compacting)
         case .idle:
@@ -304,7 +306,8 @@ struct NotchView: View {
                     activityTextParts: activityTextParts,
                     notchHeight: closedNotchSize.height,
                     isBouncing: isBouncing,
-                    activityNamespace: activityNamespace
+                    activityNamespace: activityNamespace,
+                    waitingForInputTimestamps: waitingForInputTimestamps
                 )
                 .clipped()
             } else {
@@ -510,6 +513,8 @@ struct CollapsedNotchContent: View {
     let notchHeight: CGFloat
     let isBouncing: Bool
     var activityNamespace: Namespace.ID
+    /// Timestamps when sessions entered waitingForInput, keyed by stableId
+    var waitingForInputTimestamps: [String: Date]
 
     /// Color for a session dot based on its phase
     private func dotColor(for phase: SessionPhase) -> Color {
@@ -550,6 +555,46 @@ struct CollapsedNotchContent: View {
     @ObservedObject private var buddyReader = BuddyReader.shared
     @AppStorage("usePixelCat") private var usePixelCat: Bool = false
 
+    // MARK: - Unattended Task Alert
+
+    /// How long the oldest waitingForInput session has been unattended (seconds)
+    @State private var unattendedSeconds: TimeInterval = 0
+    /// Timer that checks every 5 seconds for unattended sessions
+    @State private var unattendedTimer: Timer? = nil
+
+    /// Compute the longest unattended duration from waitingForInput timestamps
+    private var longestUnattendedDuration: TimeInterval {
+        let now = Date()
+        var maxDuration: TimeInterval = 0
+        for session in sessions where session.phase == .waitingForInput {
+            if let enteredAt = waitingForInputTimestamps[session.stableId] {
+                let duration = now.timeIntervalSince(enteredAt)
+                maxDuration = max(maxDuration, duration)
+            }
+        }
+        return maxDuration
+    }
+
+    /// Whether any session has been unattended for >30 seconds
+    private var isUnattended: Bool {
+        unattendedSeconds > 30
+    }
+
+    /// Whether any session has been unattended for >60 seconds (stronger alert)
+    private var isUrgentlyUnattended: Bool {
+        unattendedSeconds > 60
+    }
+
+    /// Override status dot color when unattended
+    private var effectiveStatusDotColor: Color {
+        if isUrgentlyUnattended {
+            return Color(red: 0.94, green: 0.27, blue: 0.27) // red
+        } else if isUnattended {
+            return Color(red: 1.0, green: 0.6, blue: 0.2)  // orange
+        }
+        return statusDotColor
+    }
+
     /// Status dot color for the left wing
     private var statusDotColor: Color {
         switch mostUrgentState {
@@ -566,12 +611,20 @@ struct CollapsedNotchContent: View {
         HStack(spacing: 0) {
             // ── Left wing (visible left of camera) ──
             HStack(spacing: 4) {
-                // Pulsing status dot
+                // Pulsing status dot — changes color when unattended
                 Circle()
-                    .fill(statusDotColor)
+                    .fill(effectiveStatusDotColor)
                     .frame(width: 8, height: 8)
-                    .shadow(color: statusDotColor.opacity(0.6), radius: 4)
-                    .opacity(pulsePhase ? 1.0 : 0.4)
+                    .shadow(color: effectiveStatusDotColor.opacity(isUnattended ? 0.9 : 0.6), radius: isUnattended ? 6 : 4)
+                    .opacity(pulsePhase ? 1.0 : (isUnattended ? 0.5 : 0.4))
+                    .overlay(
+                        // Subtle red glow ring after 60 seconds
+                        Circle()
+                            .stroke(Color.red.opacity(isUrgentlyUnattended ? 0.6 : 0.0), lineWidth: 2)
+                            .frame(width: 12, height: 12)
+                            .scaleEffect(pulsePhase && isUrgentlyUnattended ? 1.3 : 1.0)
+                            .opacity(isUrgentlyUnattended ? (pulsePhase ? 0.8 : 0.3) : 0.0)
+                    )
 
                 // Buddy icon
                 if usePixelCat {
@@ -626,6 +679,16 @@ struct CollapsedNotchContent: View {
             withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
                 pulsePhase = true
             }
+            // Start unattended check timer (every 5 seconds)
+            unattendedTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
+                DispatchQueue.main.async {
+                    unattendedSeconds = longestUnattendedDuration
+                }
+            }
+        }
+        .onDisappear {
+            unattendedTimer?.invalidate()
+            unattendedTimer = nil
         }
     }
 

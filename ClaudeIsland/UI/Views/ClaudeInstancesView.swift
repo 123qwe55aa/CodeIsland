@@ -448,18 +448,20 @@ struct InstanceRow: View {
                     subtitleView
                 }
 
-                // Jump to terminal button
-                Button {
-                    onFocus()
-                } label: {
-                    Image(systemName: "terminal")
-                        .font(.system(size: 12))
-                        .foregroundColor(isHovered ? Color(red: 1.0, green: 0.84, blue: 0.25) : .white.opacity(0.3))
-                        .frame(width: 22, height: 22)
-                        .background(Circle().fill(isHovered ? Color(red: 1.0, green: 0.84, blue: 0.25).opacity(0.12) : Color.white.opacity(0.06)))
+                // Jump to terminal button — always visible as long as PID or TTY exists
+                if session.pid != nil || session.tty != nil {
+                    Button {
+                        onFocus()
+                    } label: {
+                        Image(systemName: "terminal")
+                            .font(.system(size: 12))
+                            .foregroundColor(isHovered ? Color(red: 1.0, green: 0.84, blue: 0.25) : .white.opacity(0.3))
+                            .frame(width: 22, height: 22)
+                            .background(Circle().fill(isHovered ? Color(red: 1.0, green: 0.84, blue: 0.25).opacity(0.12) : Color.white.opacity(0.06)))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 2)
                 }
-                .buttonStyle(.plain)
-                .padding(.top, 2)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
@@ -491,6 +493,12 @@ struct InstanceRow: View {
                         .lineLimit(1)
                 }
             }
+        } else if session.phase == .waitingForInput, let summary = session.smartSummary {
+            // Show smart summary in green italic for completed sessions
+            Text(summary)
+                .font(.system(size: 10, weight: .regular).italic())
+                .foregroundColor(Color(red: 0.29, green: 0.87, blue: 0.5))
+                .lineLimit(1)
         } else if let role = session.lastMessageRole {
             switch role {
             case "tool":
