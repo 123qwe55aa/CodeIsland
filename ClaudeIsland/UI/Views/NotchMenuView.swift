@@ -172,6 +172,18 @@ struct NotchMenuView: View {
 
                     VersionRow()
 
+                    // WeChat contact
+                    HStack(spacing: 4) {
+                        Text(L10n.tr("WeChat", "微信"))
+                            .font(.system(size: 8))
+                            .foregroundColor(.white.opacity(0.2))
+                        Text("A115939")
+                            .font(.system(size: 8, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.3))
+                            .textSelection(.enabled)
+                    }
+                    .padding(.top, 4)
+
                     Text(L10n.tr("Actively maintained · Your star keeps us going!\nHave ideas? Tap Feedback — we'd love to hear from you!", "持续更新中 · Star 是我们最大的动力！\n有好的想法？点击反馈告诉我们，期待下个版本见！"))
                         .font(.system(size: 8))
                         .foregroundColor(.white.opacity(0.15))

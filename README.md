@@ -213,10 +213,9 @@ Have questions or want to chat? Reach out!
 
 有问题或想交流？欢迎联系！
 
-- **WeChat / 微信**: `A115939`
 - **Email / 邮箱**: xmqywx@gmail.com
 
-<img src="docs/wechat-qr.jpg" width="200" alt="WeChat QR Code" />
+<img src="docs/wechat-qr-kris.jpg" width="180" alt="WeChat - Kris" />  <img src="docs/wechat-qr.jpg" width="180" alt="WeChat - Carey" />
 
 ## Credits
 
