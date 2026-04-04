@@ -28,7 +28,7 @@ export default function OpenSource() {
   const { t } = useI18n()
 
   return (
-    <section id="open-source" className="relative py-20 sm:py-32 px-4 sm:px-6 noise overflow-hidden">
+    <section id="open-source" className="relative z-20 bg-deep py-20 sm:py-32 px-4 sm:px-6 noise overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_40%_at_50%_50%,rgba(124,58,237,0.06)_0%,transparent_70%)]" />
       <div className="max-w-3xl mx-auto text-center relative z-10">
         <div style={{ animation: 'heroEnter 0.8s ease-out both' }}>

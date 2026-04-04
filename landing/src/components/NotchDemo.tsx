@@ -119,27 +119,23 @@ export default function NotchDemo() {
   const desc = descriptions[active]
 
   return (
-    <section id="demo" className="relative py-32 px-6 noise">
+    <section id="demo" className="relative z-20 py-32 px-6 noise bg-deep">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_50%,rgba(124,58,237,0.05)_0%,transparent_70%)]" />
 
       <div className="max-w-3xl mx-auto relative z-10">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
+        <div
+          style={{ animation: 'heroEnter 0.8s ease-out both' }}
           className="text-center mb-16"
         >
           <span className="font-mono text-xs text-green uppercase tracking-[0.3em]">interactive demo</span>
           <h2 className="font-display text-4xl sm:text-5xl font-extrabold text-text-primary mt-4">
             See it in action
           </h2>
-        </motion.div>
+        </div>
 
         {/* Notch mockup */}
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
+        <div
+          style={{ animation: 'heroEnter 0.8s ease-out 0.1s both' }}
           className="mx-auto max-w-md"
         >
           {/* Notch shape */}
@@ -172,7 +168,7 @@ export default function NotchDemo() {
               </AnimatePresence>
             </div>
           </div>
-        </motion.div>
+        </div>
 
         {/* Pills */}
         <div className="flex justify-center gap-2 mt-10">

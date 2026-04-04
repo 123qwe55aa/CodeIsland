@@ -17,7 +17,7 @@ export default function Features() {
   ]
 
   return (
-    <section id="features" className="relative py-20 sm:py-32 px-4 sm:px-6 noise">
+    <section id="features" className="relative z-20 bg-deep py-20 sm:py-32 px-4 sm:px-6 noise">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_0%,rgba(124,58,237,0.06)_0%,transparent_60%)]" />
       <div className="max-w-6xl mx-auto relative z-10">
         <div style={{ animation: 'heroEnter 0.8s ease-out both' }} className="text-center mb-12 sm:mb-20">

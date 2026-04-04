@@ -18,7 +18,7 @@ export default function Footer() {
   const { t } = useI18n()
 
   return (
-    <footer className="relative py-8 sm:py-10 px-4 sm:px-6 border-t border-white/[0.04]">
+    <footer className="relative z-20 bg-deep py-8 sm:py-10 px-4 sm:px-6 border-t border-white/[0.04]">
       <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-6">
         <a href="#" className="flex items-center gap-2">
           <img src={logo} alt="CodeIsland" className="w-5 h-5 rounded" />
