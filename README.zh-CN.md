@@ -140,7 +140,7 @@ Claude 提问时，选项按钮直接显示在会话行：
 
 > **macOS 门禁提示：** 如果看到"Code Island 已损坏，无法打开"，在终端中运行：
 > ```bash
-> xattr -cr /Applications/Code\ Island.app
+> sudo xattr -rd com.apple.quarantine /Applications/Code\ Island.app
 > ```
 
 ### 从源码构建
