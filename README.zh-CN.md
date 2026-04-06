@@ -23,7 +23,11 @@
 
 ---
 
+> **关键词**：Claude Code 灵动岛、MacBook 刘海监控、Claude Code 可视化、Claude Code Mac 客户端、Claude Code 监控工具、MacBook 刘海工具、AI 编程助手、Claude Code 桌面应用、Mac Dynamic Island、Claude Code 状态栏、AI coding agent monitor、macOS notch app
+
 一款原生 macOS 应用，将你的 MacBook 刘海变成 AI 编码代理的实时控制面板。监控会话、审批权限、跳转终端、和你的 Claude Code 宠物互动 — 无需离开当前工作流。
+
+**适用场景**：使用 Claude Code、Cursor、Windsurf 等 AI 编程工具的开发者。CodeIsland 让你在 MacBook 灵动岛（刘海）里实时查看 AI 写代码的状态，无需切换窗口。支持会话监控、代码 diff 预览、一键审批、终端跳转、Buddy 宠物、8-bit 音效、智能摘要、API 用量统计等功能。完全免费开源，支持中英双语。
 
 ## 功能特性
 
