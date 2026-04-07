@@ -447,7 +447,10 @@ struct ClaudeInstancesView: View {
     // MARK: - Actions
 
     private func focusSession(_ session: SessionState) {
-        Task { await TerminalJumper.shared.jump(to: session) }
+        Task {
+            await TerminalJumper.shared.jump(to: session)
+            await MainActor.run { viewModel.notchClose() }
+        }
     }
 
     private func openChat(_ session: SessionState) {
@@ -1314,6 +1317,7 @@ struct UsageStatsBar: View {
     @ObservedObject var monitor: RateLimitMonitor
     let totalMinutes: Int
 
+    @AppStorage("usageWarningThreshold") private var usageWarningThreshold: Int = 90
     @State private var appear = false
     @State private var pulsePhase = false
 
@@ -1326,8 +1330,9 @@ struct UsageStatsBar: View {
     }
 
     private func barColor(_ pct: Int) -> Color {
-        if pct >= 90 { return Color(red: 0.94, green: 0.27, blue: 0.27) }
-        if pct >= 70 { return Color(red: 1.0, green: 0.6, blue: 0.2) }
+        let threshold = usageWarningThreshold
+        if threshold > 0 && pct >= threshold { return Color(red: 0.94, green: 0.27, blue: 0.27) }
+        if threshold > 0 && pct >= max(threshold - 20, 50) { return Color(red: 1.0, green: 0.6, blue: 0.2) }
         return Color(red: 0.29, green: 0.87, blue: 0.5)
     }
 
@@ -1396,10 +1401,17 @@ struct UsageStatsBar: View {
         .opacity(appear ? 1 : 0)
         .offset(y: appear ? 0 : 5)
         .onAppear {
+            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                pulsePhase = true
+            }
             withAnimation(.easeOut(duration: 0.4).delay(0.3)) {
                 appear = true
             }
         }
+    }
+
+    private func shouldBlink(_ pct: Int) -> Bool {
+        usageWarningThreshold > 0 && pct >= usageWarningThreshold
     }
 
     @ViewBuilder
@@ -1414,6 +1426,7 @@ struct UsageStatsBar: View {
                 Text("\(pct)%")
                     .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .foregroundColor(color)
+                    .opacity(shouldBlink(pct) ? (pulsePhase ? 1.0 : 0.3) : 1.0)
                 if let resetAt = resetAt {
                     let remaining = resetAt.timeIntervalSinceNow
                     if remaining > 0 {

@@ -107,6 +107,7 @@ enum L10n {
     static var sessionComplete: String { tr("Session Complete", "会话完成") }
     static var error: String { tr("Error", "错误") }
     static var contextCompacting: String { tr("Context Compacting", "上下文压缩") }
+    static var rateLimitWarning: String { tr("Usage Warning (90%)", "用量警告 (90%)") }
 
     // MARK: - Chat view
 
@@ -160,6 +161,7 @@ enum L10n {
         case "session_complete": return sessionComplete
         case "error": return error
         case "compacting": return contextCompacting
+        case "rate_limit_warning": return rateLimitWarning
         default: return event
         }
     }

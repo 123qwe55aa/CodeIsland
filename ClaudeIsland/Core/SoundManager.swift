@@ -23,6 +23,7 @@ enum SoundEvent: String, CaseIterable {
     case sessionComplete = "session_complete"
     case error = "error"
     case compacting = "compacting"
+    case rateLimitWarning = "rate_limit_warning"
 
     /// Human-readable label for display in settings UI
     var displayName: String {
@@ -40,6 +41,7 @@ enum SoundEvent: String, CaseIterable {
         case .sessionComplete: return true
         case .error: return true
         case .compacting: return false
+        case .rateLimitWarning: return true
         }
     }
 }
@@ -206,6 +208,15 @@ class SoundManager: ObservableObject {
             // Whoosh: frequency sweep 800 -> 200 Hz
             return [
                 ToneSegment(frequency: 800, duration: 0.150, waveform: .sine, endFrequency: 200),
+            ]
+
+        case .rateLimitWarning:
+            // Urgent warning: descending alarm tone A5 -> E4 -> A5 -> E4
+            return [
+                ToneSegment(frequency: Note.A5, duration: 0.120, waveform: .square),
+                ToneSegment(frequency: Note.E4, duration: 0.120, waveform: .square),
+                ToneSegment(frequency: Note.A5, duration: 0.120, waveform: .square),
+                ToneSegment(frequency: Note.E4, duration: 0.180, waveform: .square),
             ]
         }
     }

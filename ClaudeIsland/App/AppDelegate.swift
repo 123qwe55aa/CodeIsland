@@ -1,7 +1,8 @@
 import AppKit
 import SwiftUI
+import UserNotifications
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     private var windowManager: WindowManager?
     private var screenObserver: ScreenObserver?
 
@@ -14,6 +15,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     override init() {
         super.init()
         AppDelegate.shared = self
+        UserDefaults.standard.register(defaults: ["usageWarningThreshold": 90])
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -23,7 +25,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         HookInstaller.installIfNeeded()
-        NSApplication.shared.setActivationPolicy(.accessory)
+
+        // Request notification permission — .accessory policy blocks the system dialog,
+        // so temporarily switch to .regular when permission is not yet determined.
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+
+        center.getNotificationSettings { settings in
+            DispatchQueue.main.async {
+                if settings.authorizationStatus == .notDetermined {
+                    NSApplication.shared.setActivationPolicy(.regular)
+                    center.requestAuthorization(options: [.alert, .sound]) { _, _ in
+                        DispatchQueue.main.async {
+                            NSApplication.shared.setActivationPolicy(.accessory)
+                        }
+                    }
+                } else {
+                    NSApplication.shared.setActivationPolicy(.accessory)
+                }
+            }
+        }
 
         windowManager = WindowManager()
         _ = windowManager?.setupNotchWindow()
@@ -42,6 +63,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         screenObserver = nil
+    }
+
+    // Allow notifications to show even when app is in foreground
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .list])
     }
 
     private func ensureSingleInstance() -> Bool {

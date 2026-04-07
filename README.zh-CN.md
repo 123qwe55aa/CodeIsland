@@ -23,6 +23,87 @@
 
 ---
 
+<div align="center">
+
+## 📱 即将推出：**[Code Light](https://github.com/xmqywx/CodeLight)** —— 你的 iPhone 伴侣 🐱✨
+
+> ### *Claude 在思考，你在吃午饭。**你会知道。***
+
+<img src="marketing/codelight/lockscreen-live-activity.jpeg" width="640" alt="Code Light 锁屏 Live Activity —— 像素猫图标、当前 Claude 阶段、最近用户消息和回复预览、计时器"/>
+
+*Mac 刘海里那只像素猫，现在也住进了你 iPhone 的**灵动岛**。当前会话阶段、最近的用户提问、Claude 的回复预览 —— 直接显示在你的锁屏上。*
+
+</div>
+
+<table>
+<tr>
+<td width="20%"><img src="marketing/codelight/macs-list.png" alt="一台 iPhone 配对多台 Mac"/></td>
+<td width="20%"><img src="marketing/codelight/sessions.png" alt="活跃 / 最近 / 归档 三 tab 会话视图"/></td>
+<td width="20%"><img src="marketing/codelight/commands.png" alt="内置斜杠命令选择器"/></td>
+<td width="20%"><img src="marketing/codelight/chat.png" alt="实时聊天 + 富文本 Markdown 渲染"/></td>
+<td width="20%"><img src="marketing/codelight/settings.png" alt="自托管、多服务器、完全私密"/></td>
+</tr>
+<tr>
+<td align="center"><b>🖥️ 一台 iPhone N 台 Mac</b><br><sub>一键切换</sub></td>
+<td align="center"><b>📋 活跃·最近·归档</b><br><sub>三 tab 会话管理</sub></td>
+<td align="center"><b>⚡ 任意 /斜杠命令</b><br><sub>/model · /cost · /usage…</sub></td>
+<td align="center"><b>💬 实时聊天 + Markdown</b><br><sub>代码块·表格·列表</sub></td>
+<td align="center"><b>⚙️ 自托管 · 完全私密</b><br><sub>零知识中继</sub></td>
+</tr>
+</table>
+
+<div align="center">
+
+### CodeIsland 下个版本会带来什么
+
+CodeIsland 下一个版本会发布 **Code Light Sync 模块** —— 把刘海应用变成 Mac、云端、iPhone 之间的双向桥梁：
+
+| 功能 | 对你的意义 |
+|---|---|
+| 🏝️ **真正的灵动岛** | ActivityKit Live Activity 实时反映"Claude 此刻在干什么"——阶段、工具名、计时 |
+| 🎯 **精准终端定位** | 手机消息精确落到**你选中的那个** Claude 终端。CodeIsland 通过 `ps -Ax` 找到 `claude --session-id` 进程 → 读 `CMUX_WORKSPACE_ID` / `CMUX_SURFACE_ID` 环境变量 → `cmux send --workspace --surface`。零猜测 |
+| ⚡ **斜杠命令带回显** | 在手机输入 `/model`、`/cost`、`/usage`、`/clear`。CodeIsland 给 cmux 窗格拍快照、注入命令、diff 输出，作为合成消息回传。手机上看到的就跟普通 Claude 回复一样 |
+| 🚀 **远程新建会话** | 在手机上点 **+**，选一个启动预设（`claude --dangerously-skip-permissions --chrome`），选项目路径 —— CodeIsland 立刻在 Mac 上 spawn 一个新的 cmux workspace 跑那条命令 |
+| 📷 **图片附件** | iPhone 相机拍照，CodeIsland 下载 blob → `NSPasteboard` + AppleScript Cmd+V 粘进 cmux 窗格 |
+| 🔐 **永久 6 位配对码** | 每台 Mac 一个永久 shortCode（懒分配、永不轮转）。CodeIsland 重启—码不变；再配一台 iPhone—同一个码 |
+| 🖥️ **一台 Mac 多部 iPhone · 一部 iPhone 多台 Mac** | server 端的 DeviceLink 图。一台 Mac 可以同时配对 N 部 iPhone；一部 iPhone 可以配对 M 台分布在不同后端服务器的 Mac |
+| 🔄 **60 秒 echo 去重环** | 手机注入的文字不会因为 CodeIsland 的 JSONL 监听器再次检测到而被回传成重复消息 |
+| 🌐 **可自托管、零知识** | 在任何 VPS 跑你自己的 CodeLight Server。中继只存加密 blob |
+
+</div>
+
+> **状态**：Code Light 已进入 TestFlight，App Store 提交中。
+> CodeIsland 的 Sync 模块会作为下一个公开版本的一部分发布。⭐ **[给 CodeIsland 加 Star](https://github.com/xmqywx/CodeIsland)** + ⭐ **[给 Code Light 加 Star](https://github.com/xmqywx/CodeLight)** 以获得发布通知。
+
+---
+
+## 🐱 CodeIsland 现在长这样
+
+<div align="center">
+
+<img src="marketing/island/notch-collapsed.png" width="900" alt="CodeIsland 在 MacBook 刘海中 —— 像素猫 + 'hi' 状态 + 'carey ×3' 活跃会话角标"/>
+
+*收起的刘海 —— 像素猫陪伴、当前状态文字、活跃会话数角标。一直在那儿，又不挡道。*
+
+</div>
+
+<table>
+<tr>
+<td width="33%"><img src="marketing/island/session-list.png" alt="展开的会话列表 —— 两个活跃 Claude Code 会话，cmux 标签、运行时长、实时用量进度条"/></td>
+<td width="33%"><img src="marketing/island/buddy-card.png" alt="Claude Code 宠物卡片 —— 传说级章鱼物种，5 项属性条 (DBG/PAT/CHS/WIS/SNK)、ASCII 艺术 sprite、性格描述"/></td>
+<td width="33%"><img src="marketing/island/settings-menu.png" alt="CodeIsland 设置菜单 —— Screen / Notification Sound / Language 选择器，Pixel Cat / Smart Suppression / Auto-Collapse / Hooks 开关，Pair iPhone Online 状态，Launch Presets 入口"/></td>
+</tr>
+<tr>
+<td align="center"><b>📋 实时会话列表</b><br><sub>cmux 跳转 · 用量条</sub></td>
+<td align="center"><b>🐙 Claude Code 宠物</b><br><sub>18 物种 · 5 项属性 · ASCII 艺术</sub></td>
+<td align="center"><b>⚙️ 紧凑设置菜单</b><br><sub>同步 · 预设 · 辅助功能</sub></td>
+</tr>
+</table>
+
+---
+
+> **关键词**：Claude Code 灵动岛、MacBook 刘海监控、Claude Code 可视化、Claude Code Mac 客户端、Claude Code 监控工具、MacBook 刘海工具、AI 编程助手、Claude Code 桌面应用、Mac Dynamic Island、Claude Code 状态栏、AI coding agent monitor、macOS notch app
+
 一款原生 macOS 应用，将你的 MacBook 刘海变成 AI 编码代理的实时控制面板。监控会话、审批权限、跳转终端、和你的 Claude Code 宠物互动 — 无需离开当前工作流。
 
 > ### 📱 全新：与 [Code Light](https://github.com/xmqywx/CodeLight) 配对 — 你的 iPhone 伴侣

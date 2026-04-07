@@ -27,6 +27,85 @@ English | [中文](README.zh-CN.md)
 
 ---
 
+<div align="center">
+
+## 📱 Coming Soon: **[Code Light](https://github.com/xmqywx/CodeLight)** — your iPhone companion 🐱✨
+
+> ### *Claude is thinking. You're at lunch. **You'll know.***
+
+<img src="marketing/codelight/lockscreen-live-activity.jpeg" width="640" alt="Code Light Live Activity on iPhone Lock Screen — pixel cat icon, current Claude phase, last user message and assistant reply, elapsed timer"/>
+
+*The same pixel cat that lives in your Mac's notch now lives in your iPhone's **Dynamic Island**. Real-time session phase, latest user question, and Claude's reply preview — right on your lock screen.*
+
+</div>
+
+<table>
+<tr>
+<td width="20%"><img src="marketing/codelight/macs-list.png" alt="One iPhone, multiple Macs"/></td>
+<td width="20%"><img src="marketing/codelight/sessions.png" alt="Active / Recent / Archived sessions"/></td>
+<td width="20%"><img src="marketing/codelight/commands.png" alt="Built-in slash commands picker"/></td>
+<td width="20%"><img src="marketing/codelight/chat.png" alt="Real-time chat with rich markdown rendering"/></td>
+<td width="20%"><img src="marketing/codelight/settings.png" alt="Self-hosted, multi-server, fully private"/></td>
+</tr>
+<tr>
+<td align="center"><b>🖥️ One iPhone, N Macs</b><br><sub>Switch with one tap</sub></td>
+<td align="center"><b>📋 Active · Recent · Archive</b><br><sub>Three-tab session view</sub></td>
+<td align="center"><b>⚡ Any /slash command</b><br><sub>/model · /cost · /usage…</sub></td>
+<td align="center"><b>💬 Live chat + markdown</b><br><sub>Code blocks · tables · lists</sub></td>
+<td align="center"><b>⚙️ Self-hosted, private</b><br><sub>Zero-knowledge relay</sub></td>
+</tr>
+</table>
+
+<div align="center">
+
+### What CodeIsland's next version unlocks
+
+The next CodeIsland release ships the **Code Light Sync module** — turning the notch app into a bidirectional bridge between your Mac, the cloud, and your iPhone:
+
+| Feature | What it means for you |
+|---|---|
+| 🏝️ **Real Dynamic Island** | A live ActivityKit activity reflects "what Claude is doing right now" in your iPhone's notch — phase, tool name, elapsed time |
+| 🎯 **Pinpoint terminal routing** | Phone messages land in the **exact** Claude pane you picked. CodeIsland walks `ps -Ax` → finds the live `claude --session-id` PID → reads `CMUX_WORKSPACE_ID`/`CMUX_SURFACE_ID` env vars → `cmux send --workspace --surface`. Zero guessing |
+| ⚡ **Slash commands round-trip** | Type `/model`, `/cost`, `/usage`, `/clear` from the phone. CodeIsland snapshots the cmux pane, injects the command, diffs the output, and ships it back as a chat message. You see the response as if it were a Claude reply |
+| 🚀 **Remote session launch** | Tap **+** on the phone, pick a launch preset (`claude --dangerously-skip-permissions --chrome`), pick a project — CodeIsland spawns a brand-new cmux workspace running that command |
+| 📷 **Image attachments** | Take photos with the iPhone camera; CodeIsland downloads the blob and pastes via `NSPasteboard` + AppleScript Cmd+V into the cmux pane |
+| 🔐 **Permanent 6-char pair code** | Each Mac gets a permanent shortCode (lazy-allocated, never rotates). Restart CodeIsland — code is the same. Pair another iPhone — same code, same Mac |
+| 🖥️ **One Mac, many iPhones · One iPhone, many Macs** | DeviceLink graph in the server. A Mac can be paired with N iPhones; an iPhone can be paired with M Macs across different backend servers |
+| 🔄 **60-second echo dedup ring** | Phone-injected text doesn't bounce back as a duplicate when CodeIsland's JSONL watcher re-detects it |
+| 🌐 **Self-hostable, zero-knowledge** | Run your own CodeLight Server on any VPS. The relay stores only encrypted blobs |
+
+</div>
+
+> **Status**: Code Light is currently in TestFlight, App Store submission in flight.
+> The CodeIsland Sync module ships as part of the next public release. ⭐ **[Star CodeIsland](https://github.com/xmqywx/CodeIsland)** + ⭐ **[Star Code Light](https://github.com/xmqywx/CodeLight)** to be notified.
+
+---
+
+## 🐱 What CodeIsland looks like today
+
+<div align="center">
+
+<img src="marketing/island/notch-collapsed.png" width="900" alt="CodeIsland in the MacBook notch — pixel cat + 'hi' status + 'carey ×3' active session badge"/>
+
+*The collapsed notch — pixel cat companion, current status text, and an active-session badge. Always visible, never in the way.*
+
+</div>
+
+<table>
+<tr>
+<td width="33%"><img src="marketing/island/session-list.png" alt="Expanded session list with two active Claude Code sessions, cmux badges, duration, and live usage bars"/></td>
+<td width="33%"><img src="marketing/island/buddy-card.png" alt="Claude Code buddy card — LEGENDARY Octopus species with 5 stat bars (DBG/PAT/CHS/WIS/SNK), ASCII art sprite, and personality blurb"/></td>
+<td width="33%"><img src="marketing/island/settings-menu.png" alt="CodeIsland settings menu — Screen / Notification Sound / Language pickers, Pixel Cat / Smart Suppression / Auto-Collapse / Hooks toggles, Pair iPhone Online status, Launch Presets entry"/></td>
+</tr>
+<tr>
+<td align="center"><b>📋 Live session list</b><br><sub>cmux jump · usage bars</sub></td>
+<td align="center"><b>🐙 Claude Code buddy</b><br><sub>18 species · 5 stats · ASCII art</sub></td>
+<td align="center"><b>⚙️ Compact settings menu</b><br><sub>Sync · presets · accessibility</sub></td>
+</tr>
+</table>
+
+---
+
 A native macOS app that turns your MacBook's notch into a real-time control surface for AI coding agents. Monitor sessions, approve permissions, jump to terminals, and hang out with your Claude Code buddy — all without leaving your flow.
 
 > ### 📱 New: pairs with [Code Light](https://github.com/xmqywx/CodeLight) — your iPhone companion

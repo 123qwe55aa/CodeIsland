@@ -20,6 +20,7 @@ struct NotchMenuView: View {
     @AppStorage("usePixelCat") private var usePixelCat: Bool = false
     @AppStorage("smartSuppression") private var smartSuppression: Bool = true
     @AppStorage("autoCollapseOnMouseLeave") private var autoCollapseOnMouseLeave: Bool = true
+    @AppStorage("usageWarningThreshold") private var usageWarningThreshold: Int = 90
     @State private var hooksInstalled: Bool = false
     @State private var launchAtLogin: Bool = false
 
@@ -114,6 +115,7 @@ struct NotchMenuView: View {
                     ScreenPickerRow(screenSelector: screenSelector)
                     SoundPickerRow(soundSelector: soundSelector)
                     LanguageRow()
+                    ThresholdPickerRow(threshold: $usageWarningThreshold)
 
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 4) {
                         compactToggle(icon: "cat", label: "Pixel Cat", isOn: usePixelCat) { usePixelCat.toggle() }
@@ -489,6 +491,65 @@ struct LanguageRow: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+    }
+
+    private var textColor: Color {
+        .white.opacity(isHovered ? 1.0 : 0.7)
+    }
+}
+
+// MARK: - Threshold Picker Row
+
+struct ThresholdPickerRow: View {
+    @Binding var threshold: Int
+    @State private var isHovered = false
+
+    private let options: [(value: Int, label: String)] = [
+        (70, "70%"),
+        (80, "80%"),
+        (90, "90%"),
+        (0, "Off"),
+    ]
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "gauge.with.needle")
+                .font(.system(size: 12))
+                .foregroundColor(textColor)
+                .frame(width: 16)
+
+            Text(L10n.tr("Alert", "警告阈值"))
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(textColor)
+
+            Spacer()
+
+            HStack(spacing: 3) {
+                ForEach(options, id: \.value) { option in
+                    Button {
+                        threshold = option.value
+                    } label: {
+                        Text(option.label)
+                            .font(.system(size: 10, weight: threshold == option.value ? .bold : .regular))
+                            .foregroundColor(threshold == option.value ? .white : .white.opacity(0.4))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(threshold == option.value ? Color.white.opacity(0.15) : Color.clear)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isHovered ? Color.white.opacity(0.08) : Color.clear)
+        )
+        .onHover { isHovered = $0 }
     }
 
     private var textColor: Color {

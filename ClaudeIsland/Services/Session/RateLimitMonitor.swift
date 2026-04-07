@@ -8,6 +8,7 @@
 import Combine
 import Foundation
 import SwiftUI
+import UserNotifications
 
 /// Parsed rate limit display info
 struct RateLimitDisplayInfo: Equatable {
@@ -98,6 +99,14 @@ class RateLimitMonitor: ObservableObject {
     @Published private(set) var rateLimitInfo: RateLimitDisplayInfo?
     @Published private(set) var isLoading = false
 
+    /// Tracks whether we already fired a notification for the current high-usage period.
+    /// Resets when usage drops below the threshold.
+    private var hasNotifiedFiveHour = false
+    private var hasNotifiedSevenDay = false
+    private var usageWarningThreshold: Int {
+        UserDefaults.standard.integer(forKey: "usageWarningThreshold")
+    }
+
     private var refreshTimer: Timer?
 
     private init() {
@@ -116,7 +125,103 @@ class RateLimitMonitor: ObservableObject {
 
         if let info = await fetchFromAPI() {
             rateLimitInfo = info
+            await checkAndNotify(info)
         }
+    }
+
+    /// Send a macOS notification + play sound when usage first crosses the threshold.
+    /// Resets when usage drops back below the threshold so it can fire again next time.
+    private func checkAndNotify(_ info: RateLimitDisplayInfo) async {
+        // Threshold disabled (Off)
+        guard usageWarningThreshold > 0 else {
+            hasNotifiedFiveHour = false
+            hasNotifiedSevenDay = false
+            return
+        }
+
+        // 5-hour window
+        if let pct = info.fiveHourPercent {
+            if pct >= usageWarningThreshold && !hasNotifiedFiveHour {
+                let resetStr = info.fiveHourResetAt.map { formatNotificationReset($0) } ?? ""
+                let success = await sendUsageNotification(window: "5h", percent: pct, resetHint: resetStr)
+                if success { hasNotifiedFiveHour = true }
+            } else if pct < usageWarningThreshold {
+                hasNotifiedFiveHour = false
+            }
+        } else {
+            hasNotifiedFiveHour = false
+        }
+
+        // 7-day window
+        if let pct = info.sevenDayPercent {
+            if pct >= usageWarningThreshold && !hasNotifiedSevenDay {
+                let resetStr = info.sevenDayResetAt.map { formatNotificationReset($0) } ?? ""
+                let success = await sendUsageNotification(window: "7d", percent: pct, resetHint: resetStr)
+                if success { hasNotifiedSevenDay = true }
+            } else if pct < usageWarningThreshold {
+                hasNotifiedSevenDay = false
+            }
+        } else {
+            hasNotifiedSevenDay = false
+        }
+    }
+
+    private func sendUsageNotification(window: String, percent: Int, resetHint: String) async -> Bool {
+        // Play warning sound via SoundManager (respects globalMute and per-event toggle)
+        SoundManager.shared.play(.rateLimitWarning)
+
+        // Send macOS notification (no system sound — SoundManager handles audio)
+        let content = UNMutableNotificationContent()
+        content.title = L10n.tr(
+            "Claude Code Usage Warning",
+            "Claude Code 用量警告"
+        )
+        let body: String
+        if resetHint.isEmpty {
+            body = L10n.tr(
+                "\(window) window usage has reached \(percent)%.",
+                "\(window) 窗口用量已达 \(percent)%。"
+            )
+        } else {
+            body = L10n.tr(
+                "\(window) window usage has reached \(percent)%. Resets in \(resetHint).",
+                "\(window) 窗口用量已达 \(percent)%，\(resetHint)后重置。"
+            )
+        }
+        content.body = body
+        content.sound = nil
+
+        let request = UNNotificationRequest(
+            identifier: "codeisland.ratelimit.\(window)",
+            content: content,
+            trigger: nil
+        )
+        do {
+            try await UNUserNotificationCenter.current().add(request)
+            return true
+        } catch {
+            DebugLogger.log("RateLimit", "Notification error: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private func formatNotificationReset(_ date: Date) -> String {
+        let remaining = date.timeIntervalSinceNow
+        guard remaining > 0 else { return "" }
+        if remaining < 60 {
+            return L10n.tr("<1min", "<1分钟")
+        }
+        if remaining < 3600 {
+            let m = Int(ceil(remaining / 60))
+            return L10n.tr("\(m)min", "\(m)分钟")
+        } else if remaining < 86400 {
+            let h = Int(remaining / 3600)
+            let m = Int(ceil(remaining.truncatingRemainder(dividingBy: 3600) / 60))
+            return m > 0
+                ? L10n.tr("\(h)h\(m)m", "\(h)小时\(m)分钟")
+                : L10n.tr("\(h)h", "\(h)小时")
+        }
+        return L10n.tr("\(Int(remaining / 86400))d", "\(Int(remaining / 86400))天")
     }
 
     /// Read OAuth token from macOS Keychain and call Anthropic usage API

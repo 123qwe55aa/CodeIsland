@@ -38,7 +38,7 @@ actor TerminalJumper {
         let lower = terminalApp.lowercased()
 
         if lower.contains("iterm") {
-            if await jumpViaiTerm2(cwd: cwd, pid: pid) { return true }
+            if await jumpViaiTerm2(cwd: cwd, pid: pid, tty: session.tty) { return true }
         }
 
         if lower.contains("terminal") && !lower.contains("wez") {
@@ -77,7 +77,7 @@ actor TerminalJumper {
         //    try common AppleScript terminals in order
         if await jumpViaCmux(cwd: cwd, sessionId: session.sessionId) { return true }
         if await jumpViaGhostty(cwd: cwd) { return true }
-        if await jumpViaiTerm2(cwd: cwd, pid: pid) { return true }
+        if await jumpViaiTerm2(cwd: cwd, pid: pid, tty: session.tty) { return true }
         if await jumpViaTerminalApp(cwd: cwd, pid: pid) { return true }
 
         // 4. Generic fallback: activate terminal app by bundle ID
@@ -94,7 +94,37 @@ actor TerminalJumper {
 
     // MARK: - iTerm2 (AppleScript — rich API)
 
-    private func jumpViaiTerm2(cwd: String, pid: Int?) async -> Bool {
+    private func jumpViaiTerm2(cwd: String, pid: Int?, tty: String? = nil) async -> Bool {
+        // Strategy 1: match by tty (most reliable — exact device match)
+        // SessionStore strips "/dev/" prefix, but iTerm2 returns full path like "/dev/ttys000"
+        if let tty = tty, !tty.isEmpty {
+            let fullTty = tty.hasPrefix("/dev/") ? tty : "/dev/\(tty)"
+            let ttyScript = """
+            tell application "System Events"
+                if not (exists process "iTerm2") then return false
+            end tell
+            tell application "iTerm2"
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        repeat with s in sessions of t
+                            try
+                                if tty of s is "\(fullTty)" then
+                                    select t
+                                    select s
+                                    activate
+                                    return true
+                                end if
+                            end try
+                        end repeat
+                    end repeat
+                end repeat
+            end tell
+            return false
+            """
+            if await runAppleScript(ttyScript) { return true }
+        }
+
+        // Strategy 2: match by session name containing directory name
         let dirName = URL(fileURLWithPath: cwd).lastPathComponent
 
         // Strategy 1: Match by tty (most reliable — iTerm2 exposes tty per session)

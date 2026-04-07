@@ -432,7 +432,10 @@ struct ChatView: View {
     // MARK: - Actions
 
     private func focusTerminal() {
-        Task { await TerminalJumper.shared.jump(to: session) }
+        Task {
+            await TerminalJumper.shared.jump(to: session)
+            await MainActor.run { viewModel.notchClose() }
+        }
     }
 
     private func approvePermission() {
@@ -446,6 +449,7 @@ struct ChatView: View {
     /// Activate the terminal window for this session
     private func activateTerminal() async {
         await TerminalJumper.shared.jump(to: session)
+        await MainActor.run { viewModel.notchClose() }
     }
 }
 
