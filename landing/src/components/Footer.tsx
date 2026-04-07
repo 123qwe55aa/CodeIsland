@@ -28,7 +28,7 @@ export default function Footer() {
         </a>
         <div className="flex items-center gap-5">
           <a href="https://github.com/xmqywx/CodeIsland" className="text-text-muted hover:text-text-primary transition-colors" aria-label="GitHub"><GithubIcon size={16} /></a>
-          <a href="#" className="text-text-muted hover:text-text-primary transition-colors" aria-label="X"><XIcon size={16} /></a>
+          <a href="https://x.com/LinkCarey81479" className="text-text-muted hover:text-text-primary transition-colors" aria-label="X"><XIcon size={16} /></a>
         </div>
         <p className="flex items-center gap-1.5 text-xs text-text-muted/60">
           {t("footer.madeWith")} <Heart size={10} className="text-green" /> and Claude Code
