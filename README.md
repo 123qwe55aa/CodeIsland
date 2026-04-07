@@ -81,6 +81,31 @@ The next CodeIsland release ships the **Code Light Sync module** — turning the
 
 ---
 
+## 🐱 What CodeIsland looks like today
+
+<div align="center">
+
+<img src="marketing/island/notch-collapsed.png" width="900" alt="CodeIsland in the MacBook notch — pixel cat + 'hi' status + 'carey ×3' active session badge"/>
+
+*The collapsed notch — pixel cat companion, current status text, and an active-session badge. Always visible, never in the way.*
+
+</div>
+
+<table>
+<tr>
+<td width="33%"><img src="marketing/island/session-list.png" alt="Expanded session list with two active Claude Code sessions, cmux badges, duration, and live usage bars"/></td>
+<td width="33%"><img src="marketing/island/buddy-card.png" alt="Claude Code buddy card — LEGENDARY Octopus species with 5 stat bars (DBG/PAT/CHS/WIS/SNK), ASCII art sprite, and personality blurb"/></td>
+<td width="33%"><img src="marketing/island/settings-menu.png" alt="CodeIsland settings menu — Screen / Notification Sound / Language pickers, Pixel Cat / Smart Suppression / Auto-Collapse / Hooks toggles, Pair iPhone Online status, Launch Presets entry"/></td>
+</tr>
+<tr>
+<td align="center"><b>📋 Live session list</b><br><sub>cmux jump · usage bars</sub></td>
+<td align="center"><b>🐙 Claude Code buddy</b><br><sub>18 species · 5 stats · ASCII art</sub></td>
+<td align="center"><b>⚙️ Compact settings menu</b><br><sub>Sync · presets · accessibility</sub></td>
+</tr>
+</table>
+
+---
+
 A native macOS app that turns your MacBook's notch into a real-time control surface for AI coding agents. Monitor sessions, approve permissions, jump to terminals, and hang out with your Claude Code buddy — all without leaving your flow.
 
 ## Features
