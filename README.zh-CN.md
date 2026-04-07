@@ -25,6 +25,16 @@
 
 一款原生 macOS 应用，将你的 MacBook 刘海变成 AI 编码代理的实时控制面板。监控会话、审批权限、跳转终端、和你的 Claude Code 宠物互动 — 无需离开当前工作流。
 
+> ### 📱 全新：与 [Code Light](https://github.com/xmqywx/CodeLight) 配对 — 你的 iPhone 伴侣
+> CodeIsland 内置了**同步模块**，可以与 Code Light iPhone 应用配对。在手机上你可以：
+> - **看到**所有 Claude Code 会话实时更新，灵动岛显示当前阶段
+> - **发送**任意文本消息 — 包括 `/model`、`/cost`、`/usage`、`/clear` 等所有 `/slash` 命令
+> - **远程启动**新的 cmux workspace（基于 Mac 端定义的启动预设）
+> - **发送图片** — 拍照或从相册选择，自动粘贴到 cmux 窗格
+> - **多端配对** — 同一台 Mac 可以配对多部 iPhone，同一部 iPhone 也可以配对多台 Mac
+>
+> 配对方式：**每台 Mac 一个永久 6 位字符配对码**（也支持扫码）。无账号、不过期、重启不变。详见下方 [Code Light Sync](#code-light-sync-iphone-伴侣) 章节。
+
 ## 功能特性
 
 ### 灵动岛刘海
@@ -118,6 +128,75 @@ Claude 提问时，选项按钮直接显示在会话行：
 ### 8-bit 音效系统
 
 每个事件的芯片音乐提醒，每个声音可单独开关。
+
+### Code Light Sync (iPhone 伴侣)
+
+CodeIsland 的**同步模块**是 [Code Light](https://github.com/xmqywx/CodeLight) iPhone 伴侣应用得以工作的桥梁。从刘海菜单打开 `Pair iPhone` 即可开始。
+
+#### 配对方式
+
+每台 Mac 在 server 端有一个**永久 6 位 `shortCode`**（首次连接时懒分配，永不轮转）。配对窗口同时显示：
+- 二维码（用 iPhone 相机扫描）
+- 6 位大字号字符码（不想扫码就直接输入）
+
+两条路径走的是同一个 `POST /v1/pairing/code/redeem` 接口。同一个码可以配对任意多部 iPhone —— 永不过期、CodeIsland 重启也不变、升级后依然有效。
+
+#### 手机 → 终端 路由
+
+手机发来的消息必须**精准**落到用户选中的那个 Claude 终端。CodeIsland 的 `TerminalWriter` 不做任何猜测：
+
+1. `ps -Ax` 找到匹配 session 标签的 `claude --session-id <UUID>` 进程
+2. `ps -E -p <pid>` 读取 `CMUX_WORKSPACE_ID` 和 `CMUX_SURFACE_ID` 环境变量
+3. `cmux send --workspace <ws> --surface <surf> -- <text>`
+
+如果 Claude 进程被 `claude --resume` 重启过，PID 已经轮转，会以 `cwd` 为范围 fallback —— 在同一目录下挑 PID 最高的 cmux 中托管 Claude 进程。如果都没匹配到，消息会被干净地丢掉，绝不会误发到旁边的窗口。
+
+非 cmux 终端（iTerm2、Ghostty、Terminal.app）走 AppleScript fallback。
+
+#### 斜杠命令带回显
+
+`/model`、`/cost`、`/usage`、`/clear`、`/compact` 这类命令**不会**写入 Claude 的 JSONL —— 输出根本不会被文件监听器看到。CodeIsland 特殊处理：
+
+1. 用 `cmux capture-pane` 给当前 pane 拍快照
+2. 用 `cmux send` 注入斜杠命令
+3. 每 200ms 轮询 pane 直到输出稳定
+4. diff 前后快照，把新增的行作为合成的 `terminal_output` 消息发回 server
+
+手机端在聊天里看到回复，就像 `/cost` 是普通的 Claude 回答一样。
+
+#### 远程新建会话
+
+手机可以让 CodeIsland 直接 spawn 一个新的 cmux workspace，跑指定命令。CodeIsland 在本地定义**启动预设** —— 名称 + 命令 + 图标 —— 并上传到 server（使用 Mac 生成的 UUID 作为主键，让 round-trip 不需要做 ID 转换）。
+
+手机调 `POST /v1/sessions/launch {macDeviceId, presetId, projectPath}` 时，server 给这台 Mac 的 deviceId 推一个 `session-launch` socket 事件。CodeIsland 的 `LaunchService` 在本地查到预设后跑：
+
+```bash
+cmux new-workspace --cwd <projectPath> --command "<preset.command>"
+```
+
+首次启动会自动 seed 两个默认预设：
+- `Claude (skip perms)` → `claude --dangerously-skip-permissions`
+- `Claude + Chrome` → `claude --dangerously-skip-permissions --chrome`
+
+可以从刘海菜单的 **Launch Presets** 项里增删改自己的预设。
+
+#### 图片附件
+
+手机发来的图片是不透明的 blob ID（手机通过 `POST /v1/blobs` 上传）。CodeIsland 下载每个 blob → 聚焦目标 cmux pane → 把图片以 NSImage / `public.jpeg` / `.tiff` 三种格式同时写入 `NSPasteboard` → `System Events keystroke "v" using {command down}`（CGEvent fallback）。Claude 看到 `[Image #N]` 和后续文本作为同一条消息。
+
+这需要**辅助功能权限** —— 而权限是按 app 签名路径记录的，所以 CodeIsland 会自安装一份到 `/Applications/Code Island.app`，让权限在 Debug rebuild 后依然有效。
+
+#### 项目路径同步
+
+CodeIsland 每 5 分钟把所有活跃 session 的 unique `cwd` 上传一次。手机从 `GET /v1/devices/<macDeviceId>/projects` 拉取，填充启动 sheet 里的"最近项目"选择器。无需手动配置。
+
+#### Echo 去重
+
+手机发 → server → CodeIsland 粘贴 → Claude 写 JSONL → 文件监听器看到"新用户消息" → 默认会重新上传 → 手机收到自己刚发的消息的副本。解法：Mac 端保留一个 60 秒 TTL 的 `(claudeUuid, text)` 环，MessageRelay 上传前消费一次匹配项就跳过。不改 server，不做 localId 协商。
+
+#### 多 iPhone、多 server
+
+一台 Mac 可以同时配对多部 iPhone —— 它们共用同一个 `shortCode`。从 iPhone 端看，一部手机也可以配对**不同 server 上**的多台 Mac；手机的 `LinkedMacs` 列表会按 Mac 存 `serverUrl`，点击不同 Mac 时自动切换 socket 连接。
 
 ## 终端支持
 
