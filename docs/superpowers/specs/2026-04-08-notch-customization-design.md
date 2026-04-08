@@ -278,29 +278,63 @@ Naïvely applying `.animation(.easeInOut(duration: 0.3), value: theme)`
 at the `NotchView` root would stack on top of the width spring and
 could visually interfere with in-flight geometry animations. Instead,
 color interpolation is scoped **only to color-bearing modifiers**
-via a dedicated view modifier:
+via a pair of dedicated view modifiers:
 
 ```swift
+// Applied once at the NotchView root — animates the base fg/bg pair.
 struct NotchPaletteModifier: ViewModifier {
     @EnvironmentObject var store: NotchCustomizationStore
     func body(content: Content) -> some View {
         content
-            .foregroundColor(store.palette.fg)
+            .foregroundStyle(store.palette.fg)
             .background(store.palette.bg)
             .animation(.easeInOut(duration: 0.3), value: store.customization.theme)
     }
 }
+
+// Applied at call sites that need the dimmer secondary color
+// (timestamps, "85% · 2h" indicators, etc.).
+// It uses the SAME animation scope so secondary text crossfades
+// in lockstep with primary text and background.
+struct NotchSecondaryForegroundModifier: ViewModifier {
+    @EnvironmentObject var store: NotchCustomizationStore
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(store.palette.secondaryFg)
+            .animation(.easeInOut(duration: 0.3), value: store.customization.theme)
+    }
+}
+
+extension View {
+    /// Root modifier — apply once at NotchView.
+    func notchPalette() -> some View { modifier(NotchPaletteModifier()) }
+
+    /// Call-site modifier for dimmer secondary text.
+    /// Inherits the same 0.3s theme crossfade as `notchPalette()`.
+    func notchSecondaryForeground() -> some View {
+        modifier(NotchSecondaryForegroundModifier())
+    }
+}
 ```
 
-Because the `.animation(_:value:)` variant with a `value` parameter
-triggers only when `theme` changes, and only re-animates the modifiers
-it directly scopes, geometry animations (width spring) are not
-retriggered by theme switches. Theme and geometry transitions can
-happen simultaneously without interfering.
+Because both modifiers use the `.animation(_:value:)` variant with a
+`value` parameter, each triggers only when `theme` changes and each
+re-animates only the color-bearing properties it scopes. Geometry
+animations (width spring) are not retriggered by theme switches.
+Theme transitions for primary text, background, and secondary text
+all interpolate simultaneously over 0.3s, and geometry transitions
+can happen on top without interfering.
 
-Status colors (success / warning / error) come from Asset Catalog
-entries under `NotchStatus/` and are **not** palette-controlled —
-they preserve semantic meaning across themes.
+**Call-site rules:**
+- Apply `.notchPalette()` **once** at the `NotchView` root.
+- Any child view rendering secondary / dimmer text uses
+  `.notchSecondaryForeground()` instead of calling
+  `store.palette.secondaryFg` directly, so the animation is applied
+  consistently.
+- Status colors (success / warning / error) come from Asset Catalog
+  entries under `NotchStatus/` and are **not** palette-controlled —
+  they preserve semantic meaning across themes and therefore need
+  no theme-scoped animation.
 
 ### 4.5 Localized strings
 
@@ -698,11 +732,38 @@ now:
    safe default — the user can re-enter live edit mode on the new
    active screen.
 
-`ScreenObserver` reads the shared store directly. No subscription or
-dependency injection is required: both `ScreenObserver` and
-`NotchCustomizationStore` are `@MainActor` singletons, so there is no
-threading concern, and there is no circular dependency because
-`NotchCustomizationStore` never references `ScreenObserver`.
+**How `ScreenObserver` reaches the store.** The existing
+`ScreenObserver` (see `ClaudeIsland/App/ScreenObserver.swift`) is a
+plain `class`, not `@MainActor` and not a singleton — it is
+instantiated with a closure callback and holds an `NSNotificationCenter`
+observer registered on `queue: .main`. Because the notification queue
+is `.main`, the callback closure itself runs on the main thread at
+runtime, but the closure is not statically `@MainActor`-isolated in
+Swift's type system.
+
+For this feature, the handler needs to touch the `@MainActor`
+`NotchCustomizationStore`. The spec-approved pattern is:
+
+```swift
+// in ScreenObserver's callback (or in the closure passed to it)
+MainActor.assumeIsolated {
+    let store = NotchCustomizationStore.shared
+    notchWindowController.applyGeometry()
+    if store.isEditing {
+        store.cancelEdit()
+    }
+}
+```
+
+`MainActor.assumeIsolated` is a zero-cost statement of fact — we
+know from the `queue: .main` registration that we are already on the
+main thread; this closure is how we tell Swift's concurrency checker
+the same thing. It produces no runtime work and compiles cleanly in
+both Swift 5 and strict-concurrency Swift 6 modes.
+
+No subscription or dependency injection is needed. There is no
+circular dependency because `NotchCustomizationStore` never
+references `ScreenObserver`.
 
 ### 5.6 New files
 
@@ -714,8 +775,9 @@ ClaudeIsland/
   Services/State/
     NotchCustomizationStore.swift     ← ObservableObject store
   UI/Helpers/
+    Color+Hex.swift                   ← existing String-based Color(hex:) lifted here
     NotchFontModifier.swift           ← font scaling helper
-    NotchPaletteModifier.swift        ← palette + scoped theme animation
+    NotchPaletteModifier.swift        ← NotchPaletteModifier + NotchSecondaryForegroundModifier + extension View
   UI/Views/
     NotchLiveEditPanel.swift          ← auxiliary NSPanel subclass
     NotchLiveEditOverlay.swift        ← SwiftUI controls inside the panel
@@ -728,11 +790,15 @@ ClaudeIsland/
   `NotchCustomizationStore.shared` as an `@EnvironmentObject` at the
   scene root.
 - `ClaudeIsland/UI/Views/NotchView.swift` — apply `.notchPalette()`
-  modifier at the root so color transitions are scoped to the
-  `NotchPaletteModifier`; replace any remaining hardcoded colors
-  (`.black`, `.white.opacity(...)`) with `palette.fg` /
-  `palette.secondaryFg` reads; replace `.font(.system(size:))` with
-  `.notchFont(...)`; thread the store through via `@EnvironmentObject`.
+  modifier **once** at the root so primary fg and bg transitions are
+  scoped; replace any remaining hardcoded primary colors (`.black`,
+  `.white`) with implicit palette inheritance (i.e., rely on the
+  root's `foregroundStyle`). For any text that was previously dimmed
+  (e.g. `.white.opacity(0.4)`, `.gray`), apply
+  `.notchSecondaryForeground()` at that call site so secondary text
+  also animates on theme change. Replace `.font(.system(size:))`
+  with `.notchFont(...)`. Thread the store through via
+  `@EnvironmentObject`.
 - `ClaudeIsland/UI/Views/ClaudeInstancesView.swift` — gate buddy and
   usage bar visibility on `store.customization.showBuddy` /
   `.showUsageBar`.
@@ -1076,3 +1142,31 @@ approved:
 14. **State diagram** caveat added: Save/Cancel work from `.drag`
     sub-mode too, even though they're drawn only from `.resize` for
     visual clarity.
+
+## 13. Spec review revisions (round 3)
+
+Round 3 review surfaced 2 final issues, both resolved:
+
+1. **`ScreenObserver` threading claim was factually wrong.** The
+   spec had claimed `ScreenObserver` was a `@MainActor` singleton;
+   actually it is a plain `class` instantiated with a closure
+   callback and holds an `NSNotificationCenter` observer registered
+   on `queue: .main`. The notification callback therefore runs on
+   the main thread at runtime, but is not statically isolated.
+   Section 5.5 is rewritten to: (a) correctly describe the existing
+   `ScreenObserver` structure, and (b) mandate the
+   `MainActor.assumeIsolated { ... }` pattern inside the handler
+   before touching the store. This compiles cleanly in both Swift 5
+   and strict-concurrency Swift 6 modes.
+
+2. **`NotchPaletteModifier` didn't cover `secondaryFg`.** The
+   original modifier animated only `fg` and `bg`, but the palette
+   also has `secondaryFg` for dimmed text. Views reading
+   `palette.secondaryFg` directly would have gotten the new color
+   immediately without the 0.3s crossfade. Section 4.4 is expanded
+   to introduce a second companion modifier
+   `NotchSecondaryForegroundModifier` (applied at call sites via
+   `.notchSecondaryForeground()`) that inherits the same animation
+   scope. Section 5.7 updates the `NotchView.swift` bullet to use
+   the new modifier at all dimmed-text call sites. Section 5.6 adds
+   the second modifier type to `NotchPaletteModifier.swift`.
