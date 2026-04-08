@@ -89,7 +89,7 @@ struct ChatView: View {
                                 removal: .opacity
                             ))
                     }
-                } else {
+                } else if session.phase != .ended {
                     goToTerminalBar
                         .transition(.opacity)
                 }
