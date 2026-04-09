@@ -21,12 +21,12 @@ struct PairPhoneRow: View {
             HStack(spacing: 10) {
                 Image(systemName: "iphone.radiowaves.left.and.right")
                     .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(isHovered ? 1 : 0.6))
+                    .opacity(isHovered ? 1 : 0.6)
                     .frame(width: 16)
 
                 Text("Pair iPhone")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white.opacity(isHovered ? 1 : 0.7))
+                    .opacity(isHovered ? 1 : 0.7)
 
                 Spacer()
 
@@ -40,7 +40,7 @@ struct PairPhoneRow: View {
                 } else {
                     Image(systemName: "qrcode")
                         .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.3))
+                        .opacity(0.3)
                 }
             }
             .padding(.horizontal, 12)
