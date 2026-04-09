@@ -490,6 +490,12 @@ struct NotchView: View {
             if viewModel.openReason == .click || viewModel.openReason == .hover {
                 waitingForInputTimestamps.removeAll()
             }
+            // If a session is waiting for a question, auto-show the question UI
+            // (handles the case where user closed notch accidentally and reopened)
+            if case .instances = viewModel.contentType,
+               let questionSession = sessionMonitor.instances.first(where: { $0.phase.isWaitingForQuestion }) {
+                viewModel.showQuestion(for: questionSession)
+            }
         case .closed:
             // Non-notched devices stay visible (no physical anchor to hover back)
             guard viewModel.hasPhysicalNotch else { return }
