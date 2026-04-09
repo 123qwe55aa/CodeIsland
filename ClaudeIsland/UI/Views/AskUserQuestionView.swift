@@ -211,60 +211,38 @@ struct AskUserQuestionView: View {
         }
     }
 
-    /// Send text to the terminal using CGEvent keyboard simulation.
-    /// CGEvent posts at the HID level — same as physical keyboard input.
-    /// This works with Claude Code's raw terminal mode (ink/React CLI).
-    /// Code Island already has HID permissions for CGEvent (cursor fix).
+    /// Send text to the terminal by writing directly to the pty device.
+    /// This bypasses all UI frameworks and writes to the pseudo-terminal
+    /// input buffer — the same mechanism as `tmux send-keys`.
+    /// Works with Claude Code's raw terminal mode (ink/React CLI).
     private func sendToTerminal(_ text: String) async {
-        // First, jump to the correct terminal
-        await TerminalJumper.shared.jump(to: session)
-        // Wait for the terminal to become frontmost
-        try? await Task.sleep(nanoseconds: 300_000_000)
-
-        // Type each character via CGEvent
-        let src = CGEventSource(stateID: .hidSystemState)
-        for char in text {
-            if let keyCode = Self.keyCodeForChar(char) {
-                let down = CGEvent(keyboardEventSource: src, virtualKey: keyCode.code, keyDown: true)
-                if keyCode.shift { down?.flags = .maskShift }
-                down?.post(tap: .cghidEventTap)
-
-                let up = CGEvent(keyboardEventSource: src, virtualKey: keyCode.code, keyDown: false)
-                up?.post(tap: .cghidEventTap)
-            }
+        guard let tty = session.tty, !tty.isEmpty else {
+            DebugLogger.log("AskUser", "No tty for session, jumping to terminal")
+            await TerminalJumper.shared.jump(to: session)
+            return
         }
 
-        // Press Return
-        let returnDown = CGEvent(keyboardEventSource: src, virtualKey: 36, keyDown: true)
-        returnDown?.post(tap: .cghidEventTap)
-        let returnUp = CGEvent(keyboardEventSource: src, virtualKey: 36, keyDown: false)
-        returnUp?.post(tap: .cghidEventTap)
+        let ttyPath = tty.hasPrefix("/dev/") ? tty : "/dev/\(tty)"
+        let payload = "\(text)\n"
 
-        DebugLogger.log("AskUser", "Sent '\(text)' via CGEvent keystroke")
-    }
+        let fd = open(ttyPath, O_WRONLY | O_NONBLOCK)
+        guard fd >= 0 else {
+            DebugLogger.log("AskUser", "Failed to open \(ttyPath), errno=\(errno), jumping")
+            await TerminalJumper.shared.jump(to: session)
+            return
+        }
 
-    private struct KeyCode {
-        let code: CGKeyCode
-        let shift: Bool
-    }
+        let bytes = Array(payload.utf8)
+        let written = bytes.withUnsafeBufferPointer { buf in
+            Darwin.write(fd, buf.baseAddress!, buf.count)
+        }
+        close(fd)
 
-    private static func keyCodeForChar(_ char: Character) -> KeyCode? {
-        // Map common characters to macOS virtual key codes
-        switch char {
-        case "1": return KeyCode(code: 18, shift: false)
-        case "2": return KeyCode(code: 19, shift: false)
-        case "3": return KeyCode(code: 20, shift: false)
-        case "4": return KeyCode(code: 21, shift: false)
-        case "5": return KeyCode(code: 23, shift: false)
-        case "6": return KeyCode(code: 22, shift: false)
-        case "7": return KeyCode(code: 26, shift: false)
-        case "8": return KeyCode(code: 28, shift: false)
-        case "9": return KeyCode(code: 25, shift: false)
-        case "0": return KeyCode(code: 29, shift: false)
-        case " ": return KeyCode(code: 49, shift: false)
-        default:
-            // For any other character, use CGEvent's unicode input
-            return nil
+        if written > 0 {
+            DebugLogger.log("AskUser", "Wrote '\(text)' to \(ttyPath) (\(written) bytes)")
+        } else {
+            DebugLogger.log("AskUser", "Write to \(ttyPath) failed, errno=\(errno)")
+            await TerminalJumper.shared.jump(to: session)
         }
     }
 
