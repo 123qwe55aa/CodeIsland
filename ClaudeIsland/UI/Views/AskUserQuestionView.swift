@@ -120,10 +120,8 @@ struct AskUserQuestionView: View {
                 optionRow(questionIndex: questionIndex, optionIndex: index + 1, option: option, optionCount: question.options.count)
             }
 
-            // Inline "Other" input for this question (only if 3+ options)
-            if question.options.count >= 3 {
-                inlineOtherInput(questionIndex: questionIndex, optionCount: question.options.count)
-            }
+            // Inline "Other" input — Claude Code always adds "Type something"
+            inlineOtherInput(questionIndex: questionIndex, optionCount: question.options.count)
         }
     }
 
