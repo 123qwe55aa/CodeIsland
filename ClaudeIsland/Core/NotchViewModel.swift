@@ -215,6 +215,17 @@ class NotchViewModel: ObservableObject {
     }
 
     private func handleMouseMove(_ location: CGPoint) {
+        // While the user is in live edit mode, the notch is locked
+        // closed and may not auto-open from hover. The live edit
+        // overlay panel handles its own clicks; the notch itself
+        // should be inert so opening the chat panel doesn't blow
+        // away the alignment of the dashed editing frame.
+        if NotchCustomizationStore.shared.isEditing {
+            isHovering = false
+            hoverTimer?.cancel()
+            hoverTimer = nil
+            return
+        }
         let offset = currentHorizontalOffset
         let inNotch = geometry.isPointInNotch(
             location,
@@ -250,6 +261,12 @@ class NotchViewModel: ObservableObject {
     }
 
     private func handleMouseDown() {
+        // Same lock-out as mouseMove — clicks on the notch (or anywhere
+        // else) should not open the panel while live edit is active.
+        // The live edit panel has its own click routing.
+        if NotchCustomizationStore.shared.isEditing {
+            return
+        }
         let location = NSEvent.mouseLocation
 
         let offset = currentHorizontalOffset

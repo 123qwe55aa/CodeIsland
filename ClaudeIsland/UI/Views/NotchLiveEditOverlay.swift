@@ -38,6 +38,16 @@ struct NotchLiveEditOverlay: View {
     /// zero on every onChanged callback. Spec 5.5.
     @State private var dragStartOffset: CGFloat? = nil
 
+    /// Closure that returns the screen the live edit panel was
+    /// created for. We pass this in instead of reading
+    /// `NSScreen.main` because once the live edit panel becomes
+    /// key, `NSScreen.main` can flip to a non-notched secondary
+    /// display on multi-monitor setups, which makes
+    /// `NotchHardwareDetector.hasHardwareNotch(...)` return false
+    /// even on a notched MacBook Pro and the "贴合刘海" button
+    /// gets disabled by accident.
+    var screenProvider: () -> NSScreen? = { NSScreen.main }
+
     /// Callback fired when the user commits or cancels the edit
     /// session, so the controller that created the panel can tear
     /// down the window.
@@ -59,7 +69,7 @@ struct NotchLiveEditOverlay: View {
     /// to zero in the editor.
     private var baseNotchWidth: CGFloat {
         let hw = NotchHardwareDetector.hardwareNotchWidth(
-            on: NSScreen.main,
+            on: screenProvider(),
             mode: store.customization.hardwareNotchMode
         )
         return hw > 0 ? hw : 200
@@ -77,9 +87,21 @@ struct NotchLiveEditOverlay: View {
 
     private var hasHardwareNotch: Bool {
         NotchHardwareDetector.hasHardwareNotch(
-            on: NSScreen.main,
+            on: screenProvider(),
             mode: store.customization.hardwareNotchMode
         )
+    }
+
+    /// Live numeric readout shown below the notch as the user drags.
+    /// Width is the current `maxWidth` so the arrow buttons feed
+    /// directly into it; offset is the signed clamped value so the
+    /// user can tell when they've dragged off-center. Both rounded
+    /// to whole points for legibility.
+    private var readoutText: String {
+        let width = Int(store.customization.maxWidth.rounded())
+        let offset = Int(store.customization.horizontalOffset.rounded())
+        let offsetSign = offset > 0 ? "+\(offset)" : "\(offset)"
+        return "W \(width)pt   X \(offsetSign)pt"
     }
 
     var body: some View {
@@ -120,7 +142,7 @@ struct NotchLiveEditOverlay: View {
                 if presetMarkerVisible && hasHardwareNotch {
                     let markerY = visibleNotchHeight + 12
                     let markerWidth = NotchHardwareDetector.hardwareNotchWidth(
-                        on: NSScreen.main,
+                        on: screenProvider(),
                         mode: store.customization.hardwareNotchMode
                     )
                     Rectangle()
@@ -173,9 +195,23 @@ struct NotchLiveEditOverlay: View {
                 arrowButton(direction: +1, label: "Grow notch")
                     .position(x: notchRightX + 28, y: notchVerticalCenter)
 
-                // 5. Action row + Save/Cancel — stacked vertically
-                //    below the notch, horizontally centered on the
-                //    notch.
+                // 5. Live width + offset readout — small monospaced
+                //    label below the notch so the user can see exact
+                //    numbers as they drag the arrows / move the notch.
+                Text(readoutText)
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.7))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule().fill(Color.black.opacity(0.6))
+                    )
+                    .position(x: notchCenterX, y: visibleNotchHeight + 24)
+                    .accessibilityHidden(true)
+
+                // 6. Action row + Reset + Save/Cancel — stacked
+                //    vertically below the notch, horizontally
+                //    centered on the notch.
                 VStack(spacing: 10) {
                     HStack(spacing: 10) {
                         actionButton(
@@ -201,6 +237,22 @@ struct NotchLiveEditOverlay: View {
                         }
                         .accessibilityLabel("Toggle drag mode")
                         .accessibilityValue(subMode == .drag ? "On" : "Off")
+
+                        actionButton(
+                            title: L10n.notchEditReset,
+                            icon: "arrow.counterclockwise",
+                            enabled: true
+                        ) {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                store.update {
+                                    $0.maxWidth = NotchCustomization.default.maxWidth
+                                    $0.horizontalOffset = NotchCustomization.default.horizontalOffset
+                                }
+                                subMode = .resize
+                                dragStartOffset = nil
+                            }
+                        }
+                        .accessibilityLabel("Reset to default size and position")
                     }
 
                     HStack(spacing: 12) {
@@ -208,12 +260,17 @@ struct NotchLiveEditOverlay: View {
                             store.commitEdit()
                             onExit()
                         } label: {
-                            Text(L10n.notchEditSave)
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(.black)
-                                .padding(.horizontal, 22)
-                                .padding(.vertical, 7)
-                                .background(RoundedRectangle(cornerRadius: 7).fill(neonGreen))
+                            HStack(spacing: 5) {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 11, weight: .heavy))
+                                Text(L10n.notchEditSave)
+                                    .font(.system(size: 12, weight: .bold))
+                            }
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 22)
+                            .padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(neonGreen))
+                            .shadow(color: neonGreen.opacity(0.45), radius: 6)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Save notch customization")
@@ -222,18 +279,23 @@ struct NotchLiveEditOverlay: View {
                             store.cancelEdit()
                             onExit()
                         } label: {
-                            Text(L10n.notchEditCancel)
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(.black)
-                                .padding(.horizontal, 22)
-                                .padding(.vertical, 7)
-                                .background(RoundedRectangle(cornerRadius: 7).fill(neonPink))
+                            HStack(spacing: 5) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 11, weight: .heavy))
+                                Text(L10n.notchEditCancel)
+                                    .font(.system(size: 12, weight: .bold))
+                            }
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 22)
+                            .padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(neonPink))
+                            .shadow(color: neonPink.opacity(0.4), radius: 6)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Cancel notch customization")
                     }
                 }
-                .position(x: notchCenterX, y: visibleNotchHeight + 60)
+                .position(x: notchCenterX, y: visibleNotchHeight + 70)
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
         }
@@ -277,7 +339,7 @@ struct NotchLiveEditOverlay: View {
 
     private func applyNotchPreset() {
         let width = NotchHardwareDetector.hardwareNotchWidth(
-            on: NSScreen.main,
+            on: screenProvider(),
             mode: store.customization.hardwareNotchMode
         )
         guard width > 0 else { return }

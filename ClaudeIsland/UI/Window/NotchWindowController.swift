@@ -144,12 +144,25 @@ class NotchWindowController: NSWindowController {
     @MainActor
     func enterLiveEditMode() {
         guard liveEditPanel == nil else { return }
+
+        // Force the notch back into the closed state so the live edit
+        // overlay's dashed border + arrow buttons line up with the
+        // visible closed-state notch instead of an opened chat panel.
+        viewModel.notchClose()
+
         let activeScreen = window?.screen ?? self.screen
         let panel = NotchLiveEditPanel(screen: activeScreen)
 
-        let overlay = NotchLiveEditOverlay(onExit: { [weak self] in
-            self?.exitLiveEditMode()
-        })
+        // Pass the panel's screen explicitly into the overlay so its
+        // hardware-notch detection doesn't accidentally read NSScreen.main
+        // (which can return a non-notched secondary display once the
+        // live edit panel becomes key on a multi-monitor setup).
+        let overlay = NotchLiveEditOverlay(
+            screenProvider: { activeScreen },
+            onExit: { [weak self] in
+                self?.exitLiveEditMode()
+            }
+        )
         let hosting = NSHostingView(rootView: overlay)
         hosting.frame = panel.contentView?.bounds ?? .zero
         hosting.autoresizingMask = [.width, .height]

@@ -315,6 +315,7 @@ enum L10n {
     static var notchEditCancel: String { tr("Cancel", "取消") }
     static var notchEditNotchPreset: String { tr("Notch Preset", "贴合刘海") }
     static var notchEditDragMode: String { tr("Drag Mode", "拖动模式") }
+    static var notchEditReset: String { tr("Reset", "复位") }
     static var notchEditPresetDisabledTooltip: String { tr("Your device doesn't have a hardware notch", "你的设备没有硬件刘海") }
     static func notchThemeName(_ id: NotchThemeID) -> String {
         switch id {
