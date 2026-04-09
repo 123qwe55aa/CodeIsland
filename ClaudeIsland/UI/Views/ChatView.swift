@@ -97,6 +97,12 @@ struct ChatView: View {
             // When no content, shrink to fit; when content exists, fill available space
             .fixedSize(horizontal: false, vertical: !hasContent)
         }
+        // Inherit theme palette so the chat detail follows the user's
+        // selected notch theme (background + primary foreground). Hard-
+        // coded `Color.black.opacity(0.2)` "card tint" backgrounds in
+        // chatHeader / goToTerminalBar / approvalBar etc. have been
+        // dropped so the palette bg shows through directly.
+        .notchPalette()
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isWaitingForApproval)
         .animation(nil, value: viewModel.status)
         .task {
@@ -183,12 +189,12 @@ struct ChatView: View {
             HStack(spacing: 8) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white.opacity(isHeaderHovered ? 1.0 : 0.6))
+                    .opacity(isHeaderHovered ? 1.0 : 0.6)
                     .frame(width: 24, height: 24)
 
                 Text(session.displayTitle)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white.opacity(isHeaderHovered ? 1.0 : 0.85))
+                    .opacity(isHeaderHovered ? 1.0 : 0.85)
                     .lineLimit(1)
 
                 Spacer()
@@ -205,7 +211,7 @@ struct ChatView: View {
         .padding(.horizontal, 8)
         .padding(.top, 28) // Push content below camera module
         .padding(.bottom, 4)
-        .background(Color.black.opacity(0.2))
+        .background(Color.white.opacity(0.04))
         .overlay(alignment: .bottom) {
             LinearGradient(
                 colors: [fadeColor.opacity(0.7), fadeColor.opacity(0)],
@@ -243,7 +249,7 @@ struct ChatView: View {
                 .scaleEffect(0.8)
             Text(L10n.loadingMessages)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.white.opacity(0.4))
+                .opacity(0.4)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 20)
@@ -255,10 +261,10 @@ struct ChatView: View {
         VStack(spacing: 8) {
             Image(systemName: "bubble.left.and.bubble.right")
                 .font(.system(size: 24))
-                .foregroundColor(.white.opacity(0.2))
+                .opacity(0.2)
             Text(L10n.noMessages)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.white.opacity(0.4))
+                .opacity(0.4)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 20)
@@ -362,7 +368,6 @@ struct ChatView: View {
                     Text(L10n.goToTerminal)
                         .font(.system(size: 13, weight: .medium))
                 }
-                .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .background(
@@ -378,7 +383,7 @@ struct ChatView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Color.black.opacity(0.2))
+        .background(Color.white.opacity(0.04))
         .overlay(alignment: .top) {
             LinearGradient(
                 colors: [fadeColor.opacity(0), fadeColor.opacity(0.7)],
@@ -664,7 +669,7 @@ struct ToolCallView: View {
                 if canExpand && tool.status != .running && tool.status != .waitingForApproval {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.3))
+                        .opacity(0.3)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                         .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isExpanded)
                 }
@@ -745,7 +750,7 @@ struct SubagentToolsList: View {
             if hiddenCount > 0 {
                 Text(L10n.hiddenToolCalls(hiddenCount))
                     .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.4))
+                    .opacity(0.4)
             }
 
             // Show last 2 tools (most recent activity)
@@ -801,12 +806,12 @@ struct SubagentToolRow: View {
             // Tool name
             Text(tool.name)
                 .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.white.opacity(0.6))
+                .opacity(0.6)
 
             // Status text (same format as regular tools)
             Text(statusText)
                 .font(.system(size: 10))
-                .foregroundColor(.white.opacity(0.5))
+                .opacity(0.5)
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
@@ -829,17 +834,17 @@ struct SubagentToolsSummary: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(L10n.subagentTools(tools.count))
                 .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.white.opacity(0.5))
+                .opacity(0.5)
 
             HStack(spacing: 8) {
                 ForEach(toolCounts.prefix(5), id: \.0) { name, count in
                     HStack(spacing: 2) {
                         Text(name)
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.4))
+                            .opacity(0.4)
                         Text("×\(count)")
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.3))
+                            .opacity(0.3)
                     }
                 }
             }
@@ -933,7 +938,7 @@ struct ChatInteractivePromptBar: View {
                     .foregroundColor(TerminalColors.amber)
                 Text(L10n.claudeNeedsInput)
                     .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.5))
+                    .opacity(0.5)
                     .lineLimit(1)
             }
             .opacity(showContent ? 1 : 0)
@@ -964,7 +969,7 @@ struct ChatInteractivePromptBar: View {
         .frame(minHeight: 44)  // Consistent height with other bars
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Color.black.opacity(0.2))
+        .background(Color.white.opacity(0.04))
         .onAppear {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7).delay(0.05)) {
                 showContent = true
@@ -1066,11 +1071,11 @@ struct ChatApprovalBar: View {
                     .foregroundColor(Color(red: 1.0, green: 0.7, blue: 0.2))
                 Text(MCPToolFormatter.formatToolName(tool))
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.white.opacity(0.9))
+                    .opacity(0.9)
                 if let path = filePath {
                     Text(shortenPath(path))
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.5))
+                        .opacity(0.5)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -1115,7 +1120,7 @@ struct ChatApprovalBar: View {
                 // Fallback: show formatted tool input for non-edit tools
                 Text(input)
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.5))
+                    .opacity(0.5)
                     .lineLimit(2)
             }
 
@@ -1130,9 +1135,9 @@ struct ChatApprovalBar: View {
                             .font(.system(size: 13, weight: .medium))
                         Text("\u{2318}N")
                             .font(.system(size: 11, weight: .regular))
-                            .foregroundColor(.white.opacity(0.4))
+                            .opacity(0.4)
                     }
-                    .foregroundColor(.white.opacity(0.85))
+                    .opacity(0.85)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
                     .background(Color.white.opacity(0.08))
