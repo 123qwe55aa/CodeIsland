@@ -168,13 +168,17 @@ def main():
             state["tool_use_id"] = tool_use_id_from_event
 
     elif event == "PermissionRequest":
-        # This is where we can control the permission
-        state["status"] = "waiting_for_approval"
         state["tool"] = data.get("tool_name")
         state["tool_input"] = tool_input
         # tool_use_id lookup handled by Swift-side cache from PreToolUse
 
-        # Send to app and wait for decision
+        # AskUserQuestion: don't block — let Claude Code show its own
+        # permission prompt. The question UI is handled by PreToolUse.
+        if data.get("tool_name") == "AskUserQuestion":
+            sys.exit(0)
+
+        # Other tools: send to app and wait for decision
+        state["status"] = "waiting_for_approval"
         response = send_event(state)
 
         if response:

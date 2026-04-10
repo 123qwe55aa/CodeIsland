@@ -120,6 +120,21 @@ class ClaudeSessionMonitor: ObservableObject {
         }
     }
 
+    // MARK: - Question Handling
+
+    func skipQuestion(sessionId: String) {
+        Task {
+            guard let session = await SessionStore.shared.session(for: sessionId),
+                  let questionCtx = session.phase.questionContext else {
+                return
+            }
+
+            await SessionStore.shared.process(
+                .questionSkipped(sessionId: sessionId, toolUseId: questionCtx.toolUseId)
+            )
+        }
+    }
+
     /// Archive (remove) a session from the instances list
     func archiveSession(sessionId: String) {
         Task {

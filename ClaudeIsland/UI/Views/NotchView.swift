@@ -22,6 +22,7 @@ struct NotchView: View {
     @StateObject private var activityCoordinator = NotchActivityCoordinator.shared
     @State private var previousPendingIds: Set<String> = []
     @State private var previousWaitingForInputIds: Set<String> = []
+    @State private var previousWaitingForQuestionIds: Set<String> = []
     @State private var waitingForInputTimestamps: [String: Date] = [:]  // sessionId -> when it entered waitingForInput
     @State private var isVisible: Bool = false
     @State private var isHovering: Bool = false
@@ -60,6 +61,11 @@ struct NotchView: View {
             }
             return false
         }
+    }
+
+    /// Whether any Claude session is waiting for a question answer
+    private var hasWaitingForQuestion: Bool {
+        sessionMonitor.instances.contains { $0.phase.isWaitingForQuestion }
     }
 
     /// Whether there are any active (non-ended) sessions
@@ -116,6 +122,8 @@ struct NotchView: View {
         case .waitingForApproval:
             let status = session.pendingToolName.map { L10n.approveWhat($0) } ?? L10n.needsApproval
             return (project, status)
+        case .waitingForQuestion:
+            return (project, "Needs answer")
         case .waitingForInput:
             // Show smart summary when available, otherwise fall back to "done"
             let status = session.smartSummary ?? L10n.done
@@ -266,9 +274,10 @@ struct NotchView: View {
                             autoCollapseTimer?.cancel()
                             autoCollapseTimer = nil
                         } else if autoCollapseOnMouseLeave && viewModel.status == .opened {
-                            // Mouse left: start 1.5s countdown unless waiting for approval
+                            // Mouse left: start 1.5s countdown unless waiting for approval or question
                             let hasApprovalPending = sessionMonitor.instances.contains { $0.phase.isWaitingForApproval }
-                            if !hasApprovalPending {
+                            let hasQuestionPending = sessionMonitor.instances.contains { $0.phase.isWaitingForQuestion }
+                            if !hasApprovalPending && !hasQuestionPending {
                                 let workItem = DispatchWorkItem { [self] in
                                     if !isHovering && viewModel.status == .opened {
                                         viewModel.notchClose()
@@ -308,6 +317,7 @@ struct NotchView: View {
         .onChange(of: sessionMonitor.instances) { _, instances in
             handleProcessingChange()
             handleWaitingForInputChange(instances)
+            handleWaitingForQuestionChange(instances)
         }
         .onChange(of: expansionWidth) { _, newWidth in
             viewModel.currentExpansionWidth = newWidth
@@ -328,7 +338,7 @@ struct NotchView: View {
 
     /// Whether to show the expanded closed state (any active sessions)
     private var showClosedActivity: Bool {
-        isProcessing || hasPendingPermission || hasWaitingForInput || hasActiveSessions
+        isProcessing || hasPendingPermission || hasWaitingForQuestion || hasWaitingForInput || hasActiveSessions
     }
 
     @ViewBuilder
@@ -433,6 +443,12 @@ struct NotchView: View {
                     sessionMonitor: sessionMonitor,
                     viewModel: viewModel
                 )
+            case .question(let session):
+                QuestionContentWrapper(
+                    session: session,
+                    sessionMonitor: sessionMonitor,
+                    viewModel: viewModel
+                )
             }
         }
         .frame(width: notchSize.width - 24) // Fixed width to prevent text reflow
@@ -444,7 +460,7 @@ struct NotchView: View {
     private func handleProcessingChange() {
         if hasActiveSessions {
             // Show notch whenever there are active sessions
-            if isAnyProcessing || hasPendingPermission {
+            if isAnyProcessing || hasPendingPermission || hasWaitingForQuestion {
                 activityCoordinator.showActivity(type: .claude)
             } else {
                 activityCoordinator.hideActivity()
@@ -474,6 +490,12 @@ struct NotchView: View {
             if viewModel.openReason == .click || viewModel.openReason == .hover {
                 waitingForInputTimestamps.removeAll()
             }
+            // If a session is waiting for a question, auto-show the question UI
+            // (handles the case where user closed notch accidentally and reopened)
+            if case .instances = viewModel.contentType,
+               let questionSession = sessionMonitor.instances.first(where: { $0.phase.isWaitingForQuestion }) {
+                viewModel.showQuestion(for: questionSession)
+            }
         case .closed:
             // Non-notched devices stay visible (no physical anchor to hover back)
             guard viewModel.hasPhysicalNotch else { return }
@@ -499,6 +521,12 @@ struct NotchView: View {
             } else {
                 DebugLogger.log("Suppress", "[pending] Opening notification")
                 viewModel.notchOpen(reason: .notification)
+                // If the pending session is AskUserQuestion, show the question UI
+                if let askSession = sessions.first(where: {
+                    newPendingIds.contains($0.stableId) && $0.pendingToolName == "AskUserQuestion"
+                }) {
+                    viewModel.showQuestion(for: askSession)
+                }
             }
         }
 
@@ -601,6 +629,39 @@ struct NotchView: View {
         }
 
         previousWaitingForInputIds = currentIds
+    }
+
+    private func handleWaitingForQuestionChange(_ instances: [SessionState]) {
+        let questionSessions = instances.filter { $0.phase.isWaitingForQuestion }
+        let currentIds = Set(questionSessions.map { $0.stableId })
+        let newQuestionIds = currentIds.subtracting(previousWaitingForQuestionIds)
+
+        if !newQuestionIds.isEmpty {
+            // Only open question UI if not already showing one — prevents UI swap
+            // that can cause accidental clicks when content changes under the cursor.
+            if case .question = viewModel.contentType {
+                DebugLogger.log("AskUser", "[question] newIds=\(newQuestionIds.count) — already showing question, skipping")
+            } else if let session = questionSessions.first(where: { newQuestionIds.contains($0.stableId) }) {
+                DebugLogger.log("AskUser", "[question] newIds=\(newQuestionIds.count) — opening question UI")
+                viewModel.notchOpen(reason: .notification)
+                viewModel.showQuestion(for: session)
+
+                // Bounce the notch to attract attention
+                DispatchQueue.main.async {
+                    isBouncing = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        isBouncing = false
+                    }
+                }
+            }
+        }
+
+        // If no sessions are waiting for question and we're currently showing question content, go back to instances
+        if currentIds.isEmpty, case .question = viewModel.contentType {
+            viewModel.contentType = .instances
+        }
+
+        previousWaitingForQuestionIds = currentIds
     }
 
     /// Determine if notification sound should play for the given sessions
@@ -708,7 +769,7 @@ struct CollapsedNotchContent: View {
         switch phase {
         case .processing, .compacting:
             return TerminalColors.green
-        case .waitingForApproval:
+        case .waitingForApproval, .waitingForQuestion:
             return TerminalColors.amber
         case .waitingForInput:
             return TerminalColors.blue
@@ -1131,5 +1192,64 @@ struct ScrollingTextView: View {
         withAnimation(.linear(duration: duration).repeatForever(autoreverses: false)) {
             offset = -textWidth
         }
+    }
+}
+
+// MARK: - Question Content Wrapper
+
+/// Wrapper view that resolves QuestionContext from either .waitingForQuestion
+/// or .waitingForApproval with AskUserQuestion tool, then shows AskUserQuestionView.
+/// Extracted to a separate struct to avoid SwiftUI type-checker complexity in NotchView.
+private struct QuestionContentWrapper: View {
+    let session: SessionState
+    @ObservedObject var sessionMonitor: ClaudeSessionMonitor
+    @ObservedObject var viewModel: NotchViewModel
+
+    var body: some View {
+        let liveSession = sessionMonitor.instances.first(where: { $0.sessionId == session.sessionId }) ?? session
+        if let ctx = Self.questionContext(for: liveSession) {
+            AskUserQuestionView(
+                session: liveSession,
+                context: ctx,
+                sessionMonitor: sessionMonitor
+            )
+        } else {
+            ClaudeInstancesView(
+                sessionMonitor: sessionMonitor,
+                viewModel: viewModel
+            )
+            .onAppear {
+                viewModel.contentType = .instances
+            }
+        }
+    }
+
+    static func questionContext(for session: SessionState) -> QuestionContext? {
+        if let ctx = session.phase.questionContext {
+            return ctx
+        }
+        if let permission = session.activePermission,
+           session.pendingToolName == "AskUserQuestion",
+           let input = permission.toolInput,
+           let questionsRaw = input["questions"]?.value as? [[String: Any]] {
+            let questions = questionsRaw.compactMap { q -> QuestionItem? in
+                guard let question = q["question"] as? String else { return nil }
+                let header = q["header"] as? String
+                let multiSelect = q["multiSelect"] as? Bool ?? false
+                let optionsRaw = q["options"] as? [[String: Any]] ?? []
+                let options = optionsRaw.compactMap { o -> QuestionOption? in
+                    guard let label = o["label"] as? String else { return nil }
+                    return QuestionOption(label: label, description: o["description"] as? String)
+                }
+                return QuestionItem(question: question, header: header, options: options, multiSelect: multiSelect)
+            }
+            guard !questions.isEmpty else { return nil }
+            return QuestionContext(
+                toolUseId: permission.toolUseId,
+                questions: questions,
+                receivedAt: permission.receivedAt
+            )
+        }
+        return nil
     }
 }

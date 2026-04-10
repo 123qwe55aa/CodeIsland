@@ -27,12 +27,14 @@ enum NotchContentType: Equatable {
     case instances
     case menu
     case chat(SessionState)
+    case question(SessionState)
 
     var id: String {
         switch self {
         case .instances: return "instances"
         case .menu: return "menu"
         case .chat(let session): return "chat-\(session.sessionId)"
+        case .question(let session): return "question-\(session.sessionId)"
         }
     }
 }
@@ -116,6 +118,12 @@ class NotchViewModel: ObservableObject {
             return CGSize(
                 width: min(screenRect.width * 0.4, 480),
                 height: baseHeight + dailyReportState.height
+            )
+        case .question:
+            // Question view: moderate width, height adapts to question count
+            return CGSize(
+                width: min(screenRect.width * 0.4, 480),
+                height: 320
             )
         case .instances:
             let baseHeight: CGFloat = 100
@@ -381,6 +389,14 @@ class NotchViewModel: ObservableObject {
             return
         }
         contentType = .chat(session)
+    }
+
+    func showQuestion(for session: SessionState) {
+        // Avoid unnecessary updates if already showing this question
+        if case .question(let current) = contentType, current.sessionId == session.sessionId {
+            return
+        }
+        contentType = .question(session)
     }
 
     /// Go back to instances list and clear saved chat state

@@ -456,7 +456,7 @@ class HookSocketServer {
                 tty: event.tty,
                 tool: event.tool,
                 toolInput: event.toolInput,
-                toolUseId: toolUseId,  // Use resolved toolUseId
+                toolUseId: toolUseId,
                 notificationType: event.notificationType,
                 message: event.message
             )

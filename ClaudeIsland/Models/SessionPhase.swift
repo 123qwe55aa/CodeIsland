@@ -48,6 +48,17 @@ extension PermissionContext: Equatable {
     }
 }
 
+/// Question context for AskUserQuestion tool waiting for user answers
+struct QuestionContext: Equatable, Sendable {
+    let toolUseId: String
+    let questions: [QuestionItem]
+    let receivedAt: Date
+
+    static func == (lhs: QuestionContext, rhs: QuestionContext) -> Bool {
+        lhs.toolUseId == rhs.toolUseId
+    }
+}
+
 /// Explicit session phases - the state machine
 enum SessionPhase: Sendable {
     /// Session is idle, waiting for user input or new activity
@@ -61,6 +72,9 @@ enum SessionPhase: Sendable {
 
     /// A tool is waiting for user permission approval
     case waitingForApproval(PermissionContext)
+
+    /// AskUserQuestion tool is waiting for user answers
+    case waitingForQuestion(QuestionContext)
 
     /// Context is being compacted (auto or manual)
     case compacting
@@ -96,6 +110,8 @@ enum SessionPhase: Sendable {
             return true
         case (.processing, .waitingForApproval):
             return true
+        case (.processing, .waitingForQuestion):
+            return true
         case (.processing, .compacting):
             return true
         case (.processing, .idle):
@@ -119,6 +135,14 @@ enum SessionPhase: Sendable {
         case (.waitingForApproval, .waitingForApproval):
             return true  // Another tool needs approval (multiple pending permissions)
 
+        // WaitingForQuestion transitions
+        case (.waitingForQuestion, .processing):
+            return true  // Question answered - continue processing
+        case (.waitingForQuestion, .idle):
+            return true  // Question skipped or cancelled
+        case (.waitingForQuestion, .waitingForQuestion):
+            return true  // Another question arrived
+
         // Compacting transitions
         case (.compacting, .processing):
             return true
@@ -141,7 +165,7 @@ enum SessionPhase: Sendable {
     /// Whether this phase indicates the session needs user attention
     var needsAttention: Bool {
         switch self {
-        case .waitingForApproval, .waitingForInput:
+        case .waitingForApproval, .waitingForQuestion, .waitingForInput:
             return true
         default:
             return false
@@ -166,6 +190,18 @@ enum SessionPhase: Sendable {
         return false
     }
 
+    /// Whether this is a waitingForQuestion phase
+    var isWaitingForQuestion: Bool {
+        if case .waitingForQuestion = self { return true }
+        return false
+    }
+
+    /// Extract question context if waiting for question
+    var questionContext: QuestionContext? {
+        if case .waitingForQuestion(let ctx) = self { return ctx }
+        return nil
+    }
+
     /// Extract tool name if waiting for approval
     var approvalToolName: String? {
         if case .waitingForApproval(let ctx) = self {
@@ -184,6 +220,8 @@ extension SessionPhase: Equatable {
         case (.processing, .processing): return true
         case (.waitingForInput, .waitingForInput): return true
         case (.waitingForApproval(let ctx1), .waitingForApproval(let ctx2)):
+            return ctx1 == ctx2
+        case (.waitingForQuestion(let ctx1), .waitingForQuestion(let ctx2)):
             return ctx1 == ctx2
         case (.compacting, .compacting): return true
         case (.ended, .ended): return true
@@ -205,6 +243,8 @@ extension SessionPhase: CustomStringConvertible {
             return "waitingForInput"
         case .waitingForApproval(let ctx):
             return "waitingForApproval(\(ctx.toolName))"
+        case .waitingForQuestion(let ctx):
+            return "waitingForQuestion(\(ctx.toolUseId.prefix(12)))"
         case .compacting:
             return "compacting"
         case .ended:

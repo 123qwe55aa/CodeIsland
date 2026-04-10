@@ -27,6 +27,14 @@ enum SessionEvent: Sendable {
     /// Permission socket failed (connection died before response)
     case permissionSocketFailed(sessionId: String, toolUseId: String)
 
+    // MARK: - Question Events (user actions on AskUserQuestion)
+
+    /// User answered a question from AskUserQuestion tool
+    case questionAnswered(sessionId: String, toolUseId: String, answers: [String: String])
+
+    /// User skipped a question from AskUserQuestion tool
+    case questionSkipped(sessionId: String, toolUseId: String)
+
     // MARK: - File Events (from ConversationParser)
 
     /// JSONL file was updated with new content
@@ -138,11 +146,21 @@ extension HookEvent {
         }
 
         // Permission request creates waitingForApproval state
-        if expectsResponse, let tool = tool {
+        if expectsResponse && event == "PermissionRequest", let tool = tool {
             return .waitingForApproval(PermissionContext(
                 toolUseId: toolUseId ?? "",
                 toolName: tool,
                 toolInput: toolInput,
+                receivedAt: Date()
+            ))
+        }
+
+        // AskUserQuestion: detect from PreToolUse by tool name
+        if event == "PreToolUse" && tool == "AskUserQuestion" {
+            let questionItems = parseQuestionItems(from: toolInput)
+            return .waitingForQuestion(QuestionContext(
+                toolUseId: toolUseId ?? "",
+                questions: questionItems,
                 receivedAt: Date()
             ))
         }
@@ -162,6 +180,26 @@ extension HookEvent {
             return .ended
         default:
             return .idle
+        }
+    }
+
+    /// Parse question items from tool input for AskUserQuestion
+    nonisolated func parseQuestionItems(from input: [String: AnyCodable]?) -> [QuestionItem] {
+        guard let input = input,
+              let questionsRaw = input["questions"]?.value as? [[String: Any]] else {
+            return []
+        }
+        return questionsRaw.compactMap { q in
+            guard let question = q["question"] as? String else { return nil }
+            let header = q["header"] as? String
+            let optionsRaw = q["options"] as? [[String: Any]] ?? []
+            let options = optionsRaw.compactMap { o -> QuestionOption? in
+                guard let label = o["label"] as? String else { return nil }
+                let description = o["description"] as? String
+                return QuestionOption(label: label, description: description)
+            }
+            let multiSelect = q["multiSelect"] as? Bool ?? false
+            return QuestionItem(question: question, header: header, options: options, multiSelect: multiSelect)
         }
     }
 
@@ -194,6 +232,10 @@ extension SessionEvent: CustomStringConvertible {
             return "permissionDenied(session: \(sessionId.prefix(8)), tool: \(toolUseId.prefix(12)))"
         case .permissionSocketFailed(let sessionId, let toolUseId):
             return "permissionSocketFailed(session: \(sessionId.prefix(8)), tool: \(toolUseId.prefix(12)))"
+        case .questionAnswered(let sessionId, let toolUseId, _):
+            return "questionAnswered(session: \(sessionId.prefix(8)), tool: \(toolUseId.prefix(12)))"
+        case .questionSkipped(let sessionId, let toolUseId):
+            return "questionSkipped(session: \(sessionId.prefix(8)), tool: \(toolUseId.prefix(12)))"
         case .fileUpdated(let payload):
             return "fileUpdated(session: \(payload.sessionId.prefix(8)), messages: \(payload.messages.count))"
         case .interruptDetected(let sessionId):
