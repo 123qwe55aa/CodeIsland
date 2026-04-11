@@ -29,14 +29,39 @@ actor SessionStore {
     /// Sync debounce interval (100ms)
     private let syncDebounceNs: UInt64 = 100_000_000
 
+    /// UI publish throttle interval (50ms - max 20 updates/sec)
+    private let statePublishIntervalNs: UInt64 = 50_000_000
+    /// Last UI publish timestamp
+    private var lastPublishTime: UInt64 = 0
+    /// Pending publish task
+    private var pendingStatePublish: Task<Void, Never>?
+    /// Has state changed since last publish
+    private var hasUnpublishedChanges: Bool = false
+
+    /// Cached process tree info (expensive to compute)
+    private var cachedProcessTree: (tree: [Int: ProcessInfo], buildTime: Date)?
+    private let processTreeCacheDuration: TimeInterval = 2.0 // Reuse for 2 seconds
+
     // MARK: - Published State (for UI)
 
-    /// Publisher for session state changes (nonisolated for Combine subscription from any context)
+    /// Thread-safe subject for cross-actor state publishing.
+    /// CurrentValueSubject is internally synchronized, so concurrent reads/writes are safe.
+    /// The `nonisolated(unsafe)` is intentional: Combine requires the subject to be accessible
+    /// from any context when building publisher chains, but the subject itself handles locking.
     private nonisolated(unsafe) let sessionsSubject = CurrentValueSubject<[SessionState], Never>([])
 
-    /// Public publisher for UI subscription
+    /// Public publisher for UI subscription (delivers to main thread via receive(on:))
     nonisolated var sessionsPublisher: AnyPublisher<[SessionState], Never> {
         sessionsSubject.eraseToAnyPublisher()
+    }
+
+    /// Returns a publisher that delivers to MainActor.
+    /// Safe because CurrentValueSubject is internally synchronized and receive(on:) handles threading.
+    @MainActor
+    func mainActorPublisher() -> AnyPublisher<[SessionState], Never> {
+        sessionsSubject
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
     }
 
     /// Get current sessions snapshot
@@ -78,6 +103,9 @@ actor SessionStore {
 
         case .sessionEnded(let sessionId):
             await processSessionEnd(sessionId: sessionId)
+
+        case .removeSession(let sessionId):
+            await removeSession(sessionId: sessionId)
 
         case .loadHistory(let sessionId, let cwd):
             await loadHistoryFromFile(sessionId: sessionId, cwd: cwd)
@@ -135,7 +163,16 @@ actor SessionStore {
 
         session.pid = event.pid
         if let pid = event.pid {
-            let tree = ProcessTreeBuilder.shared.buildTree()
+            // Reuse cached process tree for 2 seconds to avoid expensive syscalls
+            let tree: [Int: ProcessInfo]
+            let now = Date()
+            if let cached = cachedProcessTree, now.timeIntervalSince(cached.buildTime) < processTreeCacheDuration {
+                tree = cached.tree
+            } else {
+                let newTree = ProcessTreeBuilder.shared.buildTree()
+                cachedProcessTree = (newTree, now)
+                tree = newTree
+            }
             session.isInTmux = ProcessTreeBuilder.shared.isInTmux(pid: pid, tree: tree)
             // Detect terminal app name
             if session.terminalApp == nil,
@@ -179,6 +216,19 @@ actor SessionStore {
 
         if event.event == "Stop" {
             session.subagentState = SubagentState()
+        }
+
+        // Update lastToolName from hook event (immediate update without parsing JSONL)
+        if let lastToolName = event.lastToolName {
+            session.conversationInfo = ConversationInfo(
+                summary: session.conversationInfo.summary,
+                lastMessage: session.conversationInfo.lastMessage,
+                lastMessageRole: session.conversationInfo.lastMessageRole,
+                lastToolName: lastToolName,
+                firstUserMessage: session.conversationInfo.firstUserMessage,
+                latestUserMessage: session.conversationInfo.latestUserMessage,
+                lastUserMessageDate: session.conversationInfo.lastUserMessageDate
+            )
         }
 
         // Parse conversationInfo only when needed (not on every event — too expensive for large JSONL)
@@ -886,6 +936,20 @@ actor SessionStore {
         cancelPendingSync(sessionId: sessionId)
     }
 
+    /// Remove a session entirely (user-initiated)
+    func removeSession(sessionId: String) async {
+        // Release resources first
+        cancelPendingSync(sessionId: sessionId)
+        await MainActor.run {
+            InterruptWatcherManager.shared.stopWatching(sessionId: sessionId)
+        }
+
+        // Remove session
+        sessions.removeValue(forKey: sessionId)
+        Self.logger.info("Session removed: \(sessionId, privacy: .public)")
+        publishState()
+    }
+
     // MARK: - History Loading
 
     private func loadHistoryFromFile(sessionId: String, cwd: String) async {
@@ -1008,9 +1072,32 @@ actor SessionStore {
 
     // MARK: - State Publishing
 
+    /// UI publish debounce interval in milliseconds (500ms)
+    private let statePublishDebounceMs: Int = 500
+
     private func publishState() {
-        let sortedSessions = Array(sessions.values).sorted { $0.projectName < $1.projectName }
-        sessionsSubject.send(sortedSessions)
+        hasUnpublishedChanges = true
+
+        // If no pending publish task, schedule one
+        if pendingStatePublish == nil {
+            pendingStatePublish = Task { [weak self, debounceMs = statePublishDebounceMs] in
+                try? await Task.sleep(nanoseconds: UInt64(debounceMs) * 1_000_000)
+                guard !Task.isCancelled else { return }
+                await self?.flushPublishedStateIfNeeded()
+                await self?.clearPendingPublish()
+            }
+        }
+    }
+
+    private func flushPublishedStateIfNeeded() {
+        guard hasUnpublishedChanges else { return }
+        hasUnpublishedChanges = false
+        let sessionsArray = Array(sessions.values)
+        sessionsSubject.send(sessionsArray)
+    }
+
+    private func clearPendingPublish() {
+        pendingStatePublish = nil
     }
 
     // MARK: - Queries

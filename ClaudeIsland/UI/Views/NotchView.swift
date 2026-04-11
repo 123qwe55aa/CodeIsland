@@ -26,6 +26,7 @@ struct NotchView: View {
     @State private var isVisible: Bool = false
     @State private var isHovering: Bool = false
     @State private var isBouncing: Bool = false
+    @State private var isSheetPresented: Bool = false
     @State private var autoCollapseTimer: DispatchWorkItem? = nil
     /// Track previous phases to detect transitions from working states to waitingForInput
     @State private var previousPhases: [String: SessionPhase] = [:]
@@ -235,7 +236,7 @@ struct NotchView: View {
                             // Mouse re-entered: cancel pending auto-collapse
                             autoCollapseTimer?.cancel()
                             autoCollapseTimer = nil
-                        } else if autoCollapseOnMouseLeave && viewModel.status == .opened {
+                        } else if autoCollapseOnMouseLeave && viewModel.status == .opened && !isSheetPresented {
                             // Mouse left: start 1.5s countdown unless waiting for approval
                             let hasApprovalPending = sessionMonitor.instances.contains { $0.phase.isWaitingForApproval }
                             if !hasApprovalPending {
@@ -382,7 +383,7 @@ struct NotchView: View {
                     viewModel: viewModel
                 )
             case .menu:
-                NotchMenuView(viewModel: viewModel)
+                NotchMenuView(viewModel: viewModel, isSheetPresented: $isSheetPresented)
             case .chat(let session):
                 ChatView(
                     sessionId: session.sessionId,
@@ -892,8 +893,14 @@ struct CollapsedNotchContent: View {
 
     /// Formatted tool action string for carousel slide 2
     private var toolActionLabel: String? {
-        guard let session = mostActiveSession,
-              let toolName = session.lastToolName else { return nil }
+        guard let session = mostActiveSession else {
+            print("[DEBUG] toolActionLabel: no mostActiveSession")
+            return nil
+        }
+        guard let toolName = session.lastToolName else {
+            print("[DEBUG] toolActionLabel: session=\(session.sessionId.prefix(8)) lastToolName=nil conversationInfo.lastToolName=\(session.conversationInfo.lastToolName ?? "nil")")
+            return nil
+        }
         if let msg = session.lastMessage {
             let components = msg.components(separatedBy: CharacterSet(charactersIn: "/\\"))
             let filename = components.last ?? msg

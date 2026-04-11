@@ -14,6 +14,7 @@ import ServiceManagement
 
 struct NotchMenuView: View {
     @ObservedObject var viewModel: NotchViewModel
+    @Binding var isSheetPresented: Bool
     @ObservedObject private var screenSelector = ScreenSelector.shared
     @ObservedObject private var soundSelector = SoundSelector.shared
     @AppStorage("showGroupedSessions") private var showGrouped: Bool = false
@@ -148,6 +149,7 @@ struct NotchMenuView: View {
                     AccessibilityRow(isEnabled: AXIsProcessTrusted())
                     PairPhoneRow()
                     PresetSettingsRow()
+                    SSHHostsRow()
 
                     // Footer: star + feedback + version (3 lines compressed
                     // into 2). Star uses lime accent to align with the brand

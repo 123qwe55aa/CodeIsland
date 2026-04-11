@@ -114,7 +114,15 @@ class BuddyReader: ObservableObject {
     @Published var buddy: BuddyInfo?
 
     private init() {
-        reload()
+        Task {
+            await reloadAsync()
+        }
+    }
+
+    private func reloadAsync() async {
+        await MainActor.run {
+            reload()
+        }
     }
 
     func reload() {

@@ -70,6 +70,9 @@ enum SessionEvent: Sendable {
     /// Session has ended
     case sessionEnded(sessionId: String)
 
+    /// User removed a session from the UI
+    case removeSession(sessionId: String)
+
     /// Request to load initial history from file
     case loadHistory(sessionId: String, cwd: String)
 
@@ -199,6 +202,8 @@ extension SessionEvent: CustomStringConvertible {
             return "clearDetected(session: \(sessionId.prefix(8)))"
         case .sessionEnded(let sessionId):
             return "sessionEnded(session: \(sessionId.prefix(8)))"
+        case .removeSession(let sessionId):
+            return "removeSession(session: \(sessionId.prefix(8)))"
         case .loadHistory(let sessionId, _):
             return "loadHistory(session: \(sessionId.prefix(8)))"
         case .historyLoaded(let sessionId, let messages, _, _, _, _):

@@ -2,10 +2,56 @@
 //  TmuxSessionMatcher.swift
 //  ClaudeIsland
 //
-//  Matches tmux panes to session files by sampling visible text
+//  Matches tmux panes to session files by sampling visible text.
+//  Also provides tmux target caching for cmux PID lookups (5-minute TTL).
 //
 
 import Foundation
+
+/// Cache entry for cmux workspace/surface IDs keyed by PID
+private struct CmuxTargetCacheEntry {
+    let target: (workspaceId: String, surfaceId: String?)
+    let expires: Date
+}
+
+/// Thread-safe cmux target cache with 5-minute TTL.
+/// Uses NSLock for thread-safety so it can be accessed from nonisolated contexts.
+final class CmuxTargetCache: @unchecked Sendable {
+    static let shared = CmuxTargetCache()
+
+    private var cache: [Int: CmuxTargetCacheEntry] = [:]
+    private let lock = NSLock()
+    private let ttlSeconds: TimeInterval = 300  // 5 minutes
+
+    func get(_ pid: Int) -> (workspaceId: String, surfaceId: String?)? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let entry = cache[pid], entry.expires > Date() else {
+            cache.removeValue(forKey: pid)
+            return nil
+        }
+        return entry.target
+    }
+
+    func set(_ pid: Int, target: (workspaceId: String, surfaceId: String?)) {
+        lock.lock()
+        defer { lock.unlock() }
+        cache[pid] = CmuxTargetCacheEntry(target: target, expires: Date().addingTimeInterval(ttlSeconds))
+    }
+
+    func remove(_ pid: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        cache.removeValue(forKey: pid)
+    }
+
+    func prune() {
+        lock.lock()
+        defer { lock.unlock() }
+        let now = Date()
+        cache = cache.filter { $0.value.expires > now }
+    }
+}
 
 /// Matches tmux panes to Claude session files by sampling pane content
 actor TmuxSessionMatcher {
@@ -56,6 +102,18 @@ actor TmuxSessionMatcher {
         }
 
         return nil
+    }
+
+    // MARK: - Cmux Cache Helpers
+
+    /// Look up cached cmux target for a PID (5-minute TTL)
+    func getCachedCmuxTarget(forPid pid: Int) -> (workspaceId: String, surfaceId: String?)? {
+        return CmuxTargetCache.shared.get(pid)
+    }
+
+    /// Cache a cmux target for a PID
+    func cacheCmuxTarget(forPid pid: Int, target: (workspaceId: String, surfaceId: String?)) {
+        CmuxTargetCache.shared.set(pid, target: target)
     }
 
     // MARK: - Private Methods
