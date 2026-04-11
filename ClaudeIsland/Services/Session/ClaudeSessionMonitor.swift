@@ -9,17 +9,24 @@
 import AppKit
 import Combine
 import Foundation
+import os.log
 
 @MainActor
 class ClaudeSessionMonitor: ObservableObject {
+    nonisolated static let logger = Logger(subsystem: "com.codeisland", category: "SessionMonitor")
+
     @Published var instances: [SessionState] = []
     @Published var pendingInstances: [SessionState] = []
 
     private var cancellables = Set<AnyCancellable>()
 
+    /// UI debounce interval for session updates (100ms)
+    private let uiDebounceMs: Int = 100
+
     init() {
-        SessionStore.shared.sessionsPublisher
-            .receive(on: DispatchQueue.main)
+        // Use mainActorPublisher() which returns a properly MainActor-bridged publisher
+        SessionStore.shared.mainActorPublisher()
+            .debounce(for: .milliseconds(uiDebounceMs), scheduler: DispatchQueue.main)
             .sink { [weak self] sessions in
                 self?.updateFromSessions(sessions)
             }
@@ -68,6 +75,58 @@ class ClaudeSessionMonitor: ObservableObject {
                 }
             }
         )
+
+        // Start TCP relay server for SSH connections
+        startRelayTCPServer()
+    }
+
+    func startRelayTCPServer() {
+        Task {
+            let psk = await SSHHostRegistry.shared.getOrCreatePSK()
+            HookSocketServer.shared.startTCPServer(
+                port: 9871,
+                psk: psk,
+                onEvent: { event in
+                    let start = Date()
+                    Task {
+                        await SessionStore.shared.process(.hookReceived(event))
+                        let elapsed = Date().timeIntervalSince(start) * 1000
+                        if elapsed > 50 {
+                            Self.logger.warning("Event processing took \(elapsed, format: .fixed(precision: 1))ms: \(event.event, privacy: .public) sid=\(event.sessionId.prefix(8), privacy: .public)")
+                        }
+                    }
+
+                    if event.sessionPhase == .processing {
+                        Task { @MainActor in
+                            InterruptWatcherManager.shared.startWatching(
+                                sessionId: event.sessionId,
+                                cwd: event.cwd
+                            )
+                        }
+                    }
+
+                    if event.status == "ended" {
+                        Task { @MainActor in
+                            InterruptWatcherManager.shared.stopWatching(sessionId: event.sessionId)
+                        }
+                    }
+
+                    if event.event == "Stop" {
+                        HookSocketServer.shared.cancelPendingPermissions(sessionId: event.sessionId)
+                    }
+
+                    if event.event == "PostToolUse", let toolUseId = event.toolUseId {
+                        HookSocketServer.shared.cancelPendingPermission(toolUseId: toolUseId)
+                    }
+                },
+                onCommand: { action, target, text in
+                    Self.logger.debug("Relay command: \(action) target: \(target)")
+                }
+            )
+            await MainActor.run {
+                Self.logger.info("TCP relay server started on port 9871")
+            }
+        }
     }
 
     func stopMonitoring() {

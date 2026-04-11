@@ -16,9 +16,13 @@ class ChatHistoryManager: ObservableObject {
     private var loadedSessions: Set<String> = []
     private var cancellables = Set<AnyCancellable>()
 
+    /// UI debounce interval for session updates (100ms)
+    private let uiDebounceMs: Int = 100
+
     private init() {
-        SessionStore.shared.sessionsPublisher
-            .receive(on: DispatchQueue.main)
+        // Use mainActorPublisher() which returns a properly MainActor-bridged publisher
+        SessionStore.shared.mainActorPublisher()
+            .debounce(for: .milliseconds(uiDebounceMs), scheduler: DispatchQueue.main)
             .sink { [weak self] sessions in
                 self?.updateFromSessions(sessions)
             }

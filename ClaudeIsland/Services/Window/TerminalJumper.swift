@@ -15,12 +15,17 @@ actor TerminalJumper {
     private init() {}
 
     /// Jump to the terminal hosting the given session.
-    /// Tries strategies in order: tmux+Yabai → AppleScript → generic activate.
+    /// Tries strategies in order: tmux+Yabai → AppleScript → SSH remote → generic activate.
     func jump(to session: SessionState) async -> Bool {
         let cwd = session.cwd
         let pid = session.pid
         let terminalApp = session.terminalApp ?? ""
         DebugLogger.log("Jump", "termApp=\(terminalApp) cwd=\(cwd) sid=\(session.sessionId.prefix(8))")
+
+        // 0. SSH remote sessions
+        if session.isSSH, let host = session.remoteHost, let user = session.sshUser, let target = session.remoteTmuxTarget {
+            if await jumpViaSSH(host: host, user: user, target: target) { return true }
+        }
 
         // 1. Tmux + Yabai (most precise for tmux sessions)
         if session.isInTmux {
@@ -363,6 +368,42 @@ actor TerminalJumper {
             let result = try await ProcessExecutor.shared.run("/usr/bin/osascript", arguments: ["-e", source])
             return result.trimmingCharacters(in: .whitespacesAndNewlines) == "true"
         } catch {
+            return false
+        }
+    }
+
+    // MARK: - SSH Remote (tmux on remote server)
+
+    /// Jump to a remote tmux session via SSH.
+    /// Note: This only switches the remote tmux pane - it does NOT bring the SSH terminal on the Mac to foreground.
+    /// User must manually focus their SSH terminal.
+    private func jumpViaSSH(host: String, user: String, target: String) async -> Bool {
+        let sshTarget = "\(user)@\(host)"
+
+        // Build SSH command with key if available
+        var sshArgs = ["\(sshTarget)"]
+        if let hostEntry = await SSHHostRegistry.shared.getHostByAddress(host: host, user: user),
+           let keyPath = hostEntry.sshKeyPath {
+            sshArgs = ["-i", keyPath, sshTarget]
+        }
+
+        let tmuxCmd = "tmux select-window -t \(target)"
+
+        // Try to run via SSH with ServerAliveInterval to detect failures quickly
+        do {
+            let result = try await ProcessExecutor.shared.run(
+                "/usr/bin/ssh",
+                arguments: sshArgs + [
+                    "-o", "ServerAliveInterval=5",
+                    "-o", "ServerAliveCountMax=3",
+                    "-o", "StrictHostKeyChecking=accept-new",
+                    tmuxCmd
+                ]
+            )
+            DebugLogger.log("Jump", "SSH jump to \(host):\(target) succeeded")
+            return true
+        } catch {
+            DebugLogger.log("Jump", "SSH jump to \(host):\(target) failed: \(error)")
             return false
         }
     }

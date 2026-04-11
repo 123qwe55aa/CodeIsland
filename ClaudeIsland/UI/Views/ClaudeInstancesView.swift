@@ -674,15 +674,13 @@ struct InstanceRow: View {
                             .contentShape(Rectangle())
                             .onTapGesture { onFocus() }
 
-                        // Delete button (ended/idle sessions)
-                        if !isActive {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 8, weight: .medium))
-                                .foregroundColor(.white.opacity(0.25))
-                                .frame(width: 16, height: 16)
-                                .contentShape(Rectangle())
-                                .onTapGesture { onArchive() }
-                        }
+                        // Delete button
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8, weight: .medium))
+                            .foregroundColor(.white.opacity(0.25))
+                            .frame(width: 16, height: 16)
+                            .contentShape(Rectangle())
+                            .onTapGesture { onArchive() }
                     }
 
                     // Subtitle
