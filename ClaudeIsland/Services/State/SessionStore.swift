@@ -1027,7 +1027,7 @@ actor SessionStore {
     private func loadHistoryFromFile(sessionId: String, cwd: String) async {
         // Codex sessions: parse rollout JSONL instead of Claude JSONL
         if let transcriptPath = sessions[sessionId]?.codexTranscriptPath, !transcriptPath.isEmpty {
-            let messages = CodexChatHistoryParser.parse(transcriptPath: transcriptPath)
+            let messages = await CodexChatHistoryParser.shared.parse(transcriptPath: transcriptPath)
             let firstUserMsg = messages.first(where: { $0.role == .user })
             let lastUserMsg = messages.last(where: { $0.role == .user })
             let conversationInfo = ConversationInfo(
@@ -1169,7 +1169,7 @@ actor SessionStore {
             try? await Task.sleep(nanoseconds: syncDebounceNs)
             guard !Task.isCancelled else { return }
 
-            let messages = CodexChatHistoryParser.parse(transcriptPath: transcriptPath)
+            let messages = await CodexChatHistoryParser.shared.parse(transcriptPath: transcriptPath)
             guard !messages.isEmpty else { return }
 
             let firstUserMsg = messages.first(where: { $0.role == .user })

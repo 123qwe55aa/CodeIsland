@@ -64,6 +64,7 @@ enum L10n {
     static var pixelCatMode: String { tr("Pixel Cat Mode", "像素猫模式") }
     static var launchAtLogin: String { tr("Launch at Login", "开机启动") }
     static var hooks: String { tr("Hooks", "钩子") }
+    static var codexSupport: String { tr("Codex Support", "Codex 支持") }
     static var accessibility: String { tr("Accessibility", "辅助功能") }
     static var version: String { tr("Version", "版本") }
     static var quit: String { tr("Quit", "退出") }
