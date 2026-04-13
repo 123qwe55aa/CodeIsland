@@ -360,10 +360,11 @@ Subsequent launches work normally with a double-click.
 
 **Scope — the setting is applied to:**
 - ✅ The rate-limit bar in the notch (`RateLimitMonitor` → `api.anthropic.com/api/oauth/usage`)
-- ✅ The Stats plugin's "Editor's Note" AI daily summary — the plugin reads the same setting and injects `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` into just the `claude` CLI subprocess it spawns, mirroring what Claude Code itself does via its shell function wrapper. No global env pollution.
-- ❌ **Not** applied to CodeLight iPhone sync (our own server `island.wdao.chat` — reachable directly, routing through a user proxy would add latency and a failure point).
+- ✅ **Every subprocess CodeIsland spawns**, including the Stats plugin's `claude` CLI and any future plugin's shell-outs. Code Island calls `setenv()` on its own process environment at startup, so children inherit `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` automatically — no per-plugin opt-in needed.
+- ❌ **Not** applied to CodeLight iPhone sync (our own server `island.wdao.chat` — direct is faster, routing through a user proxy would add latency and a failure point).
+- ❌ **Not** applied to third-party plugins that use their own `URLSession` to reach external APIs. Those honor your system proxy settings (System Preferences → Network → Proxies), not this field.
 
-You do **not** need to run `launchctl setenv HTTPS_PROXY ...` — setting the proxy in Settings is scoped and sufficient. Leave the field empty for direct connections.
+You do **not** need to run `launchctl setenv HTTPS_PROXY ...` — setting the proxy in Settings is scoped to CodeIsland and sufficient. Leave the field empty for direct connections.
 
 <details>
 <summary><b>Build from Source</b></summary>

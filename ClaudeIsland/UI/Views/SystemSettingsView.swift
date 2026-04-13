@@ -465,16 +465,16 @@ private struct AnthropicProxyRow: View {
 
             Text(L10n.tr(
                 """
-                Applies to: the rate-limit bar (api.anthropic.com) and the Stats plugin's Editor's Note (claude CLI subprocess — scoped env injection, no launchctl pollution).
+                Applies to: the rate-limit bar (api.anthropic.com) and every subprocess CodeIsland spawns — including the Stats plugin's claude CLI and any future plugin's shell-outs. We set HTTPS_PROXY / HTTP_PROXY / ALL_PROXY on CodeIsland's own process once at startup, so children inherit it automatically. No launchctl pollution, no per-plugin opt-in.
 
-                Does NOT apply to: CodeLight sync (our own server, stays direct), or third-party plugins that make their own network calls — those must opt in by reading the same setting.
+                Does NOT apply to: CodeLight sync (our own server, stays direct), or third-party plugins that use their own URLSession to reach external APIs — those honor system proxy settings instead.
 
                 Leave empty for direct connection.
                 """,
                 """
-                作用于:刘海额度条(api.anthropic.com)和 Stats 插件的 Editor's Note(注入到 claude CLI 子进程的 env,精准覆盖,不污染全局)。
+                作用于:刘海额度条(api.anthropic.com)和 CodeIsland 启动的所有子进程 —— 包括 Stats 插件的 claude CLI、未来任何插件的 shell-out。我们在启动时给 CodeIsland 自身进程 `setenv` 一次 HTTPS_PROXY / HTTP_PROXY / ALL_PROXY,所有子进程自动继承。不污染全局,不需要每个插件单独适配。
 
-                不作用于:CodeLight 同步(我们自己的服务器,始终直连)、第三方插件自己发起的网络请求(那些插件需要自己读取这个设置 opt-in)。
+                不作用于:CodeLight 同步(我们自己的服务器,始终直连);以及第三方插件自己用 URLSession 调用外部 API 的场景(那种走系统代理设置)。
 
                 留空即直连。
                 """

@@ -110,4 +110,34 @@ enum AppSettings {
         }
         return (parts[0], port)
     }
+
+    /// Apply the user's `anthropicProxyURL` preference to CodeIsland's own
+    /// process environment via POSIX `setenv`. Called once at startup from
+    /// `AppDelegate.init()` and again whenever the preference changes.
+    ///
+    /// Why process env and not just `URLSession.connectionProxyDictionary`?
+    /// Because many plugins (Stats' Editor's Note, future shell-outs) spawn
+    /// the `claude` CLI — or other CLIs — via `Foundation.Process`, whose
+    /// network stack is independent of Swift `URLSession`. Subprocesses
+    /// inherit their parent's environment, so setting HTTPS_PROXY / HTTP_PROXY
+    /// / ALL_PROXY on CodeIsland's own process means every subprocess
+    /// automatically picks it up — no per-plugin opt-in, no global
+    /// `launchctl setenv` pollution affecting other GUI apps.
+    ///
+    /// This is the architectural answer to "why does proxy coverage keep
+    /// being a whack-a-mole" — instead of wiring every new network
+    /// consumer individually, we set it once on the process and inherit.
+    ///
+    /// Idempotent: empty value → `unsetenv`, non-empty → `setenv`. Safe
+    /// to call on every `UserDefaults.didChangeNotification`.
+    static func applyProxyToProcessEnvironment() {
+        let raw = anthropicProxyURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let keys = ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY",
+                    "https_proxy", "http_proxy", "all_proxy"]
+        if raw.isEmpty {
+            for k in keys { unsetenv(k) }
+        } else {
+            for k in keys { setenv(k, raw, 1) }
+        }
+    }
 }
