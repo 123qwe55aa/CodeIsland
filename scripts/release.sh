@@ -31,7 +31,26 @@ cd "$PROJECT_DIR"
 xcodebuild -scheme ClaudeIsland -configuration Release build \
   CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" 2>&1 | tail -1
 
-# 3. Strip any residual signature (defensive — xcodebuild shouldn't add one
+# 3. Bundle built-in plugins into the .app.
+#    The repo ships prebuilt .bundle files under ClaudeIsland/Resources/Plugins/
+#    (e.g. the stats plugin, source in ../mio-plugin-stats). NativePluginManager
+#    scans Bundle.main.resourceURL/Plugins in addition to the user plugins dir,
+#    so anything copied here is auto-loaded on launch.
+BUNDLED_PLUGINS_SRC="$PROJECT_DIR/ClaudeIsland/Resources/Plugins"
+BUNDLED_PLUGINS_DST="$APP_PATH/Contents/Resources/Plugins"
+if [ -d "$BUNDLED_PLUGINS_SRC" ]; then
+  echo ">>> Copying bundled plugins..."
+  rm -rf "$BUNDLED_PLUGINS_DST"
+  mkdir -p "$BUNDLED_PLUGINS_DST"
+  # Only copy .bundle directories (ignore any stray files)
+  for b in "$BUNDLED_PLUGINS_SRC"/*.bundle; do
+    [ -d "$b" ] || continue
+    cp -R "$b" "$BUNDLED_PLUGINS_DST/"
+    echo "    $(basename "$b")"
+  done
+fi
+
+# 4. Strip any residual signature (defensive — xcodebuild shouldn't add one
 #    when CODE_SIGNING_ALLOWED=NO, but we make sure)
 codesign --remove-signature "$APP_PATH" 2>/dev/null || true
 
