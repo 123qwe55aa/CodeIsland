@@ -441,8 +441,8 @@ private struct GeneralTab: View {
     }
 }
 
-/// Text field for configuring an HTTP(S) proxy used only for Anthropic's
-/// usage API (RateLimitMonitor). Leave empty to connect directly.
+/// Text field for configuring an HTTP(S) proxy for Anthropic API traffic.
+/// See the explanatory Text below for exact scope.
 private struct AnthropicProxyRow: View {
     @AppStorage("anthropicProxyURL") private var proxyURL: String = ""
 
@@ -464,8 +464,20 @@ private struct AnthropicProxyRow: View {
                 )
 
             Text(L10n.tr(
-                "Applied only to api.anthropic.com (usage / rate limit). Your own sync server stays direct. Leave empty to connect directly.",
-                "仅用于 api.anthropic.com（用量 / 额度查询）。CodeLight 同步服务器始终直连。留空即直连。"
+                """
+                Applies to: the rate-limit bar (api.anthropic.com) and the Stats plugin's Editor's Note (claude CLI subprocess — scoped env injection, no launchctl pollution).
+
+                Does NOT apply to: CodeLight sync (our own server, stays direct), or third-party plugins that make their own network calls — those must opt in by reading the same setting.
+
+                Leave empty for direct connection.
+                """,
+                """
+                作用于:刘海额度条(api.anthropic.com)和 Stats 插件的 Editor's Note(注入到 claude CLI 子进程的 env,精准覆盖,不污染全局)。
+
+                不作用于:CodeLight 同步(我们自己的服务器,始终直连)、第三方插件自己发起的网络请求(那些插件需要自己读取这个设置 opt-in)。
+
+                留空即直连。
+                """
             ))
             .font(.system(size: 10))
             .foregroundColor(.white.opacity(0.5))
