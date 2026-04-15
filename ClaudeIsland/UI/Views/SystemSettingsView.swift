@@ -673,26 +673,7 @@ private struct AboutTab: View {
                 }
             }
 
-            SettingsCard {
-                Button {
-                    updater.checkForUpdates()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 12))
-                        Text(L10n.checkForUpdates)
-                            .font(.system(size: 12, weight: .semibold))
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 9, weight: .semibold))
-                            .opacity(0.4)
-                    }
-                    .foregroundColor(Theme.detailText.opacity(0.9))
-                }
-                .buttonStyle(.plain)
-                .disabled(!updater.canCheckForUpdates)
-                .opacity(updater.canCheckForUpdates ? 1.0 : 0.5)
-            }
+            CheckForUpdatesCard(updater: updater)
 
             SettingsCard {
                 HStack(spacing: 8) {
@@ -811,6 +792,39 @@ private struct AboutTab: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(Theme.sidebarFill)
         )
+    }
+}
+
+// MARK: - Check for Updates card (with hover)
+
+private struct CheckForUpdatesCard: View {
+    @ObservedObject var updater: UpdaterManager
+    @State private var isHovered = false
+
+    private let brandLime = Color(red: 0xCA/255, green: 0xFF/255, blue: 0x00/255)
+
+    var body: some View {
+        SettingsCard {
+            Button {
+                updater.checkForUpdates()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 12))
+                    Text(L10n.checkForUpdates)
+                        .font(.system(size: 12, weight: .semibold))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .opacity(0.4)
+                }
+                .foregroundColor(isHovered ? brandLime : Theme.detailText.opacity(0.9))
+            }
+            .buttonStyle(.plain)
+            .disabled(!updater.canCheckForUpdates)
+            .opacity(updater.canCheckForUpdates ? 1.0 : 0.5)
+            .onHover { isHovered = $0 }
+        }
     }
 }
 
