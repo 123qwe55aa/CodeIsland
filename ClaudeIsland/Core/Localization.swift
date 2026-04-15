@@ -108,16 +108,16 @@ enum L10n {
     static var anthropicApiProxyDescription: String {
         tr(
             """
-            Applies to: the rate-limit bar (api.anthropic.com) and every subprocess CodeIsland spawns — including the Stats plugin's claude CLI and any future plugin's shell-outs. We set HTTPS_PROXY / HTTP_PROXY / ALL_PROXY on CodeIsland's own process once at startup, so children inherit it automatically. No launchctl pollution, no per-plugin opt-in.
+            Applies to: the rate-limit bar (api.anthropic.com) and every subprocess MioIsland spawns — including the Stats plugin's claude CLI and any future plugin's shell-outs. HTTPS_PROXY / HTTP_PROXY / ALL_PROXY are set once at startup, all children inherit automatically.
 
-            Does NOT apply to: CodeLight sync (our own server, stays direct), or third-party plugins that use their own URLSession to reach external APIs — those honor system proxy settings instead.
+            Does NOT apply to: CodeLight sync (always direct) or third-party plugin URLSession calls (those use system proxy).
 
             Leave empty for direct connection.
             """,
             """
-            作用于:刘海额度条(api.anthropic.com)和 CodeIsland 启动的所有子进程 —— 包括 Stats 插件的 claude CLI、未来任何插件的 shell-out。我们在启动时给 CodeIsland 自身进程 `setenv` 一次 HTTPS_PROXY / HTTP_PROXY / ALL_PROXY,所有子进程自动继承。不污染全局,不需要每个插件单独适配。
+            作用于：刘海额度条 (api.anthropic.com) 和 MioIsland 启动的所有子进程，包括 Stats 插件的 claude CLI。启动时设置一次 HTTPS_PROXY / HTTP_PROXY / ALL_PROXY，子进程自动继承。
 
-            不作用于:CodeLight 同步(我们自己的服务器,始终直连);以及第三方插件自己用 URLSession 调用外部 API 的场景(那种走系统代理设置)。
+            不作用于：CodeLight 同步（始终直连）、第三方插件的 URLSession 调用（走系统代理）。
 
             留空即直连。
             """
@@ -218,6 +218,7 @@ enum L10n {
     static var starOnGitHub: String { tr("Star on GitHub", "GitHub 点星") }
     static var wechatLabel: String { tr("WeChat", "微信") }
     static var maintainedTagline: String { tr("Actively maintained · Your star keeps us going!", "持续更新中 · Star 是我们最大的动力！") }
+    static var quitApp: String { tr("Quit Mio Island", "退出 Mio Island") }
 
     // MARK: - Plugin marketplace
     static var pluginMarketplaceTitle: String { tr("Plugin Marketplace", "插件市场") }

@@ -456,7 +456,7 @@ private struct AnthropicProxyRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            TextField(L10n.anthropicApiProxyPlaceholder, text: $proxyURL)
+            TextField("", text: $proxyURL, prompt: Text(L10n.anthropicApiProxyPlaceholder).foregroundColor(.white.opacity(0.3)))
                 .textFieldStyle(.plain)
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundColor(.white.opacity(0.95))
@@ -472,8 +472,9 @@ private struct AnthropicProxyRow: View {
                 )
 
             Text(L10n.anthropicApiProxyDescription)
-                .font(.system(size: 10))
-                .foregroundColor(.white.opacity(0.5))
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(Color(white: 0.75))
+                .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -746,6 +747,30 @@ private struct AboutTab: View {
                 .foregroundColor(Theme.detailText.opacity(0.5))
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.top, 4)
+
+            Button {
+                NSApplication.shared.terminate(nil)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "power")
+                        .font(.system(size: 11))
+                    Text(L10n.quitApp)
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .foregroundColor(.red.opacity(0.8))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.red.opacity(0.08))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.red.opacity(0.15), lineWidth: 0.5)
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
         }
     }
 

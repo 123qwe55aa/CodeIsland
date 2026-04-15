@@ -160,7 +160,7 @@ struct NativePluginStoreView: View {
                 .foregroundColor(.white.opacity(0.45))
 
             HStack(spacing: 8) {
-                TextField("https://api.miomio.chat/api/i/...", text: $installURLText)
+                TextField("", text: $installURLText, prompt: Text("https://api.miomio.chat/api/i/...").foregroundColor(.white.opacity(0.3)))
                     .textFieldStyle(.plain)
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(.white.opacity(0.9))

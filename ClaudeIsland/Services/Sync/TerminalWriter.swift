@@ -182,9 +182,9 @@ final class TerminalWriter {
             }
             defer { AEDisposeDesc(&targetAddr) }
 
-            // Now the question is correctly: "Can Code Island automate this terminal?"
+            // Check: "Can this app automate the target terminal?"
             let status = AEDeterminePermissionToAutomateTarget(
-                &requestorAddr,
+                &targetAddr,
                 AEEventClass(typeWildCard),
                 AEEventID(typeWildCard),
                 false
@@ -911,13 +911,9 @@ final class TerminalWriter {
                   let sessionId = json["sessionId"] as? String,
                   Self.isUuidLike(sessionId) else { continue }
 
-            // Verify the process is still alive
-            let (out, ok) = await runShellWithTimeout(
-                "/bin/ps", ["-p", "\(pid)", "-o", "pid="], timeout: 1.0
-            )
-            guard ok,
-                  let line = out?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  line == "\(pid)" else { continue }
+            // Verify the process is still alive using kill(0) signal check.
+            // Faster and more reliable than spawning /bin/ps subprocess.
+            guard kill(Int32(pid), 0) == 0 else { continue }
 
             // Prefer cwd from the JSON; fall back to lsof if absent
             let cwd: String
