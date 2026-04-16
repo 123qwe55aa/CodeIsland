@@ -24,7 +24,7 @@ struct NotchView: View {
     @State private var previousWaitingForInputIds: Set<String> = []
     @State private var previousWaitingForQuestionIds: Set<String> = []
     @State private var waitingForInputTimestamps: [String: Date] = [:]  // sessionId -> when it entered waitingForInput
-    @State private var isVisible: Bool = false
+    @State private var isVisible: Bool = true
     @State private var isHovering: Bool = false
     @State private var isBouncing: Bool = false
     @State private var autoCollapseTimer: DispatchWorkItem? = nil
