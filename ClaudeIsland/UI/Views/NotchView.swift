@@ -167,7 +167,7 @@ struct NotchView: View {
     /// active sessions) is always 0 — the notch shrinks tight around
     /// the hardware shape.
     private var expansionWidth: CGFloat {
-        guard hasActiveSessions else { return 0 }
+        guard hasActiveSessions else { return 60 }
         let geo = notchStore.customization.geometry(for: viewModel.screenID)
         let userMax = geo.maxWidth
         let userExpansion = max(0, userMax - closedNotchSize.width)
@@ -257,10 +257,7 @@ struct NotchView: View {
                             .padding(.horizontal, topCornerRadius)
                             .animation(.easeInOut(duration: 0.3), value: notchStore.customization.theme)
                     }
-                    .shadow(
-                        color: (viewModel.status == .opened || isHovering) ? .black.opacity(0.7) : .clear,
-                        radius: 6
-                    )
+                    .shadow(color: notchShadowColor, radius: notchShadowRadius)
                     .frame(
                         maxWidth: viewModel.status == .opened ? notchSize.width : closedContentWidth,
                         maxHeight: viewModel.status == .opened ? notchSize.height : nil,
@@ -399,14 +396,33 @@ struct NotchView: View {
                 )
                 .clipped()
             } else {
-                // Closed without sessions: empty space
-                Rectangle()
-                    .fill(.clear)
-                    .frame(width: closedNotchSize.width - 20)
+                standbyContent
             }
         }
         .frame(height: closedNotchSize.height)
         .clipped()
+    }
+
+    // MARK: - Shadow helpers
+
+    private var notchShadowColor: Color {
+        (viewModel.status == .opened || isHovering) ? .black.opacity(0.7) : .clear
+    }
+
+    private var notchShadowRadius: CGFloat { 6 }
+
+    // MARK: - Standby Content
+
+    private var standbyContent: some View {
+        HStack(spacing: 6) {
+            PixelCharacterView(state: .idle)
+                .scaleEffect(0.35)
+                .frame(width: 18, height: 18)
+            Text(L10n.standby)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white.opacity(0.5))
+        }
+        .frame(width: closedNotchSize.width + 40)
     }
 
     // MARK: - Opened Header Content
@@ -483,18 +499,9 @@ struct NotchView: View {
             }
             isVisible = true
         } else {
-            // Hide activity when no sessions
+            // No sessions: hide activity but keep notch visible in standby
             activityCoordinator.hideActivity()
-
-            // Delay hiding the notch until animation completes
-            // Non-notched devices stay visible (no physical anchor to hover back)
-            if viewModel.status == .closed && viewModel.hasPhysicalNotch {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    if !hasActiveSessions && viewModel.status == .closed {
-                        isVisible = false
-                    }
-                }
-            }
+            isVisible = true
         }
     }
 
