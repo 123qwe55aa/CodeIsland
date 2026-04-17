@@ -207,6 +207,28 @@ enum L10n {
     static var logsEmpty: String { tr("Log is empty. Interact with CodeIsland to generate entries.", "日志为空。操作 CodeIsland 会产生日志。") }
     static var pairedIPhones: String { tr("Paired iPhones", "已配对 iPhone") }
     static var pairNewPhone: String { tr("Pair New iPhone", "配对新 iPhone") }
+    // Pair iPhone inline panel
+    static var pairPanelOnline: String { tr("Online", "在线") }
+    static var pairPanelNotConnected: String { tr("Not connected", "未连接") }
+    static var pairPanelConnecting: String { tr("Connecting…", "连接中…") }
+    static var pairPanelStepServerTitle: String { tr("Step 1 · Configure Server", "第 1 步 · 配置服务器") }
+    static var pairPanelStepServerBody: String { tr("Set your CodeLight relay server. Your messages sync through it end-to-end encrypted — the server never sees plaintext. Without this step, the QR code cannot be generated.", "先设置一个 CodeLight 中继服务器。你的消息会通过它端到端加密同步 —— 服务端看不到明文。没配好这一步，下面的二维码不会生成。") }
+    static var pairPanelStepServerHint: String { tr("Use your self-hosted server, or the official free server island.wdao.chat", "可以填你自建的服务器，或用官方免费服务器 island.wdao.chat") }
+    static var pairPanelServerPlaceholder: String { tr("https://your-server.example", "https://你的服务器.example") }
+    static var pairPanelSaveAndConnect: String { tr("Save and Connect", "保存并连接") }
+    static var pairPanelChangeServer: String { tr("Change Server", "更换服务器") }
+    static var pairPanelCancel: String { tr("Cancel", "取消") }
+    static var pairPanelSave: String { tr("Save", "保存") }
+    static var pairPanelStoredLocally: String { tr("The server URL is stored locally and never leaves your Mac.", "服务器地址仅保存在本机，不会外发。") }
+    static var pairPanelStepScanTitle: String { tr("Step 2 · Scan with Code Light", "第 2 步 · 用 Code Light 扫码") }
+    static var pairPanelStepScanBody: String { tr("Open Code Light on iPhone and scan this QR, or enter the short code manually.", "在 iPhone 打开 Code Light，扫描下方二维码，或手动输入配对码。") }
+    static var pairPanelShortCodeLabel: String { tr("Pairing Code", "配对码") }
+    static var pairPanelGeneratingCode: String { tr("Generating pairing code…", "生成配对码中…") }
+    static var pairPanelLinkedDevices: String { tr("Linked Devices", "已连接设备") }
+    static var pairPanelChangeServerTooltip: String { tr("Change server URL", "更换服务器地址") }
+    static var pairPanelServerLabel: String { tr("Server", "服务器") }
+    static var pairPanelDeviceLabel: String { tr("This Mac", "本机") }
+    static var pairPanelServerErrorPrefix: String { tr("Connection error:", "连接错误：") }
     static var launchPresetsSection: String { tr("Launch Presets", "启动预设") }
     static var addPreset: String { tr("New Preset", "新建预设") }
     static var noPresets: String { tr("No presets yet — tap + to add one", "还没有预设，点击 + 添加") }
@@ -409,6 +431,7 @@ enum L10n {
     static var smartSuppression: String { tr("Smart Suppression", "智能抑制") }
     static var autoCollapseOnMouseLeave: String { tr("Auto-Collapse on Leave", "离开时自动收起") }
     static var compactCollapsed: String { tr("Compact Notch", "紧凑刘海") }
+    static var autoExpandOnComplete: String { tr("Auto-Expand on Complete", "完成时自动展开") }
 
     // MARK: - Notch customization
     //

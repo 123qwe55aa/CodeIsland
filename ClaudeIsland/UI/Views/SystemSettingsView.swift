@@ -533,6 +533,7 @@ private struct BehaviorTab: View {
     @AppStorage("smartSuppression") private var smartSuppression: Bool = true
     @AppStorage("autoCollapseOnMouseLeave") private var autoCollapseOnMouseLeave: Bool = true
     @AppStorage("compactCollapsed") private var compactCollapsed: Bool = false
+    @AppStorage("autoExpandOnComplete") private var autoExpandOnComplete: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -541,6 +542,7 @@ private struct BehaviorTab: View {
                     TabToggle(icon: "eye.slash", label: L10n.smartSuppression, isOn: smartSuppression) { smartSuppression.toggle() }
                     TabToggle(icon: "rectangle.compress.vertical", label: L10n.autoCollapseOnMouseLeave, isOn: autoCollapseOnMouseLeave) { autoCollapseOnMouseLeave.toggle() }
                     TabToggle(icon: "rectangle.arrowtriangle.2.inward", label: L10n.compactCollapsed, isOn: compactCollapsed) { compactCollapsed.toggle() }
+                    TabToggle(icon: "rectangle.expand.vertical", label: L10n.autoExpandOnComplete, isOn: autoExpandOnComplete) { autoExpandOnComplete.toggle() }
                 }
             }
         }

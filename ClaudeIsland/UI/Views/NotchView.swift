@@ -607,7 +607,8 @@ struct NotchView: View {
                 return prevPhase == .processing || prevPhase == .compacting
             }
 
-            if !sessionsFromWorkingState.isEmpty && viewModel.status == .closed {
+            let autoExpandOnComplete = UserDefaults.standard.object(forKey: "autoExpandOnComplete") as? Bool ?? true
+            if autoExpandOnComplete && !sessionsFromWorkingState.isEmpty && viewModel.status == .closed {
                 let completedSession = sessionsFromWorkingState[0]
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [self] in
                     guard viewModel.status == .closed else { return }

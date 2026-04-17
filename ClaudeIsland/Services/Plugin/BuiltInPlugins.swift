@@ -28,41 +28,11 @@ final class PairPhonePlugin: NSObject, MioPlugin {
     }
 }
 
-/// View that immediately opens the QR pairing window.
+/// Inline pairing panel — no popup. Server config is shown prominently
+/// when unset so users don't silently skip it (issue #57).
 private struct PairPhonePluginView: View {
-    @ObservedObject var syncManager = SyncManager.shared
-
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "iphone.radiowaves.left.and.right")
-                .font(.system(size: 32))
-                .foregroundColor(.white.opacity(0.5))
-
-            if syncManager.isEnabled {
-                HStack(spacing: 6) {
-                    Circle().fill(Color.green).frame(width: 6, height: 6)
-                    Text("Online")
-                        .font(.system(size: 12))
-                        .foregroundColor(.green)
-                }
-            } else {
-                Text("Not connected")
-                    .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(0.4))
-            }
-
-            Button("Open Pairing") {
-                QRPairingWindow.shared.show()
-            }
-            .buttonStyle(.plain)
-            .font(.system(size: 12, weight: .medium))
-            .foregroundColor(.white.opacity(0.7))
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.08)))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 20)
+        PairPhonePanelView()
     }
 }
 
