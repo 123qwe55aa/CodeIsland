@@ -116,5 +116,5 @@ git pull --ff-only origin main
 ## 碰到问题
 
 - 搜 Issues：https://github.com/MioMioOS/MioIsland/issues
-- 内部沟通：WeChat 群（扫 `docs/wechat-group-qr.jpg`）
+- 内部沟通：WeChat 群（扫 `docs/wechat-qr.jpg`，微信群 QR 每 7 天失效，过期了问管理员要新的）
 - 私聊管理员：扫 `docs/wechat-qr-kris.jpg`
