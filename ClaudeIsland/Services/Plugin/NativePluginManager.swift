@@ -468,8 +468,26 @@ final class NativePluginManager: ObservableObject {
             throw InstallError.extractionFailed(errStr)
         }
 
-        // Find the .bundle directory inside the extracted tree
-        guard let bundleURL = findBundle(in: extractDir) else {
+        // Find the .bundle directory inside the extracted tree.
+        // Some marketplaces (e.g. miomio.chat) wrap the uploaded zip in
+        // ANOTHER zip so the user-facing download filename matches the
+        // plugin's marketing name. Handle up to one level of nested-zip
+        // by extracting again if the outer archive contains a solitary
+        // .zip instead of a .bundle.
+        var bundleURL = findBundle(in: extractDir)
+        if bundleURL == nil, let nested = findSingleNestedZip(in: extractDir) {
+            let innerDir = tmpDir.appendingPathComponent("extracted-inner", isDirectory: true)
+            try FileManager.default.createDirectory(at: innerDir, withIntermediateDirectories: true)
+            let innerProc = Process()
+            innerProc.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+            innerProc.arguments = ["-x", "-k", nested.path, innerDir.path]
+            try innerProc.run()
+            innerProc.waitUntilExit()
+            if innerProc.terminationStatus == 0 {
+                bundleURL = findBundle(in: innerDir)
+            }
+        }
+        guard let bundleURL else {
             throw InstallError.bundleNotFound
         }
 
@@ -509,6 +527,26 @@ final class NativePluginManager: ObservableObject {
             }
         }
         return nil
+    }
+
+    /// When the extracted archive contains exactly one .zip (and no
+    /// .bundle), return that nested zip's URL so the caller can
+    /// unwrap it. Happens with marketplaces that re-wrap uploads.
+    private func findSingleNestedZip(in dir: URL) -> URL? {
+        let fm = FileManager.default
+        guard let enumerator = fm.enumerator(
+            at: dir,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return nil }
+        var zips: [URL] = []
+        for case let url as URL in enumerator {
+            if url.pathExtension.lowercased() == "zip" {
+                zips.append(url)
+                if zips.count > 1 { return nil }
+            }
+        }
+        return zips.first
     }
 
     // MARK: - Query
