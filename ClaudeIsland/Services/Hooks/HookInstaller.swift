@@ -11,6 +11,8 @@ struct HookInstaller {
 
     /// Install hook script and update settings.json on app launch
     static func installIfNeeded() {
+        cleanupLegacyHooks()
+
         let claudeDir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude")
         let hooksDir = claudeDir.appendingPathComponent("hooks")
@@ -174,6 +176,70 @@ struct HookInstaller {
             options: [.prettyPrinted, .sortedKeys]
         ) {
             try? data.write(to: settings)
+        }
+    }
+
+    /// Strip hook entries from older app versions (Claude Island etc.) and
+    /// delete their leftover scripts. Idempotent — safe to run every launch.
+    /// Without this, users who installed a pre-rename build keep double-firing
+    /// every Claude Code hook because both the old and new scripts are still
+    /// wired up in settings.json.
+    static func cleanupLegacyHooks() {
+        let legacyScripts = ["claude-island-state.py"]
+
+        let claudeDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude")
+        let hooksDir = claudeDir.appendingPathComponent("hooks")
+        let settings = claudeDir.appendingPathComponent("settings.json")
+
+        // 1. Delete the legacy script files on disk (no-op if missing).
+        for name in legacyScripts {
+            let path = hooksDir.appendingPathComponent(name)
+            try? FileManager.default.removeItem(at: path)
+        }
+
+        // 2. Strip their entries out of settings.json hooks config.
+        guard let data = try? Data(contentsOf: settings),
+              var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var hooks = json["hooks"] as? [String: Any] else {
+            return
+        }
+
+        func entryReferencesLegacy(_ entry: [String: Any]) -> Bool {
+            guard let entryHooks = entry["hooks"] as? [[String: Any]] else { return false }
+            return entryHooks.contains { hook in
+                guard let cmd = hook["command"] as? String else { return false }
+                return legacyScripts.contains { cmd.contains($0) }
+            }
+        }
+
+        var mutated = false
+        for (event, value) in hooks {
+            guard var entries = value as? [[String: Any]] else { continue }
+            let before = entries.count
+            entries.removeAll(where: entryReferencesLegacy)
+            guard entries.count != before else { continue }
+            mutated = true
+            if entries.isEmpty {
+                hooks.removeValue(forKey: event)
+            } else {
+                hooks[event] = entries
+            }
+        }
+
+        guard mutated else { return }
+
+        if hooks.isEmpty {
+            json.removeValue(forKey: "hooks")
+        } else {
+            json["hooks"] = hooks
+        }
+
+        if let newData = try? JSONSerialization.data(
+            withJSONObject: json,
+            options: [.prettyPrinted, .sortedKeys]
+        ), !newData.isEmpty {
+            try? newData.write(to: settings, options: .atomic)
         }
     }
 
