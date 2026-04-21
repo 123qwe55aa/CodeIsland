@@ -315,6 +315,7 @@ final class NativePluginManager: ObservableObject {
             }
         }
         loadedPlugins.removeAll()
+        loadedBundleIdentifiers.removeAll()
     }
 
     func unload(id: String) {
@@ -322,6 +323,15 @@ final class NativePluginManager: ObservableObject {
         let plugin = loadedPlugins[index]
         if plugin.instance.responds(to: Selector(("deactivate"))) {
             plugin.instance.perform(Selector(("deactivate")))
+        }
+        // Critical: drop the bundle identifier from the dedup set,
+        // otherwise a subsequent `loadPlugin` for the same plugin
+        // (uninstall → reinstall via URL, or re-enable) will hit the
+        // "already loaded" guard at loadPlugin's top and silently
+        // skip, leaving the UI claiming "installed" while the
+        // plugin isn't actually in `loadedPlugins`.
+        if let bundleId = plugin.bundle.bundleIdentifier {
+            loadedBundleIdentifiers.remove(bundleId)
         }
         loadedPlugins.remove(at: index)
         Self.log.info("Unloaded plugin: \(id)")
