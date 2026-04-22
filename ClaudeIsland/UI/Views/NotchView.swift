@@ -366,7 +366,11 @@ struct NotchView: View {
                 viewModel.contentType = .completion(front)
                 viewModel.notchOpen(reason: .notification)
             } else if case .completion = viewModel.contentType {
-                viewModel.contentType = .instances
+                // Spec §1: instances list / chat = manual user action only.
+                // After Completion Panel auto-dismisses, close the notch
+                // entirely — do NOT auto-show instances list (that's the
+                // exact regression the user flagged at smoke time).
+                viewModel.notchClose()
             }
         }
     }

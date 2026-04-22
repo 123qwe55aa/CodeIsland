@@ -402,7 +402,14 @@ class NotchViewModel: ObservableObject {
             return
         }
 
-        // Restore chat session if we had one open before
+        // Spec §1 (Completion Panel v2): instances list / chat = manual
+        // user action only. Hover should NOT auto-restore a previous chat
+        // session — that produced the "old chat detail pops up" regression
+        // the user flagged during smoke. Only .click explicitly restores
+        // a saved chat; hover goes to instances list (default contentType).
+        guard reason == .click else { return }
+
+        // Restore chat session if we had one open before (click only)
         if let chatSession = currentChatSession {
             // Avoid unnecessary updates if already showing this chat
             if case .chat(let current) = contentType, current.sessionId == chatSession.sessionId {
