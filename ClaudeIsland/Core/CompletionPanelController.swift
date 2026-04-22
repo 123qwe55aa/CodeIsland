@@ -155,10 +155,12 @@ final class CompletionPanelController: NSObject, ObservableObject {
                     DebugLogger.log("CP/suppress", "claudeStop suppressed hasNoContentYet session=\(session.stableId.prefix(8))")
                     continue
                 }
-                if TerminalVisibilityDetector.isSessionTerminalFrontmost(session) {
-                    DebugLogger.log("CP/suppress", "claudeStop suppressed terminalFrontmost session=\(session.stableId.prefix(8))")
-                    continue
-                }
+                // NOTE: Dropped the `isSessionTerminalFrontmost` suppression
+                // (v2 spec Q10 had it). In real usage the user works terminal +
+                // Claude side by side — the terminal is frontmost most of the
+                // time, which suppressed almost every panel. Users want the
+                // panel to surface EVEN when the terminal is front so they
+                // can respond without pulling focus off their terminal.
                 let rawSummary = resolveSummary(for: session)
                 let clean = SummaryExtraction.extract(rawSummary)
                 state.enqueue(CompletionEntry(
