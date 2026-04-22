@@ -29,6 +29,7 @@ enum NotchContentType: Equatable {
     case chat(SessionState)
     case question(SessionState)
     case plugin(String)  // plugin ID
+    case completion(CompletionEntry)      // Completion Panel — spec §5.6
 
     var id: String {
         switch self {
@@ -37,6 +38,7 @@ enum NotchContentType: Equatable {
         case .chat(let session): return "chat-\(session.sessionId)"
         case .question(let session): return "question-\(session.sessionId)"
         case .plugin(let pluginId): return "plugin-\(pluginId)"
+        case .completion(let entry): return "completion-\(entry.id)"
         }
     }
 }
@@ -162,6 +164,20 @@ class NotchViewModel: ObservableObject {
                 width: min(screenRect.width * 0.4, 480),
                 height: max(height, 200)
             )
+        case .completion(let entry):
+            switch entry.variant {
+            case .claudeStop:
+                return CGSize(width: min(screenRect.width * 0.5, 600), height: 180)
+            case .subagentDone(let subagents):
+                let rowHeight: CGFloat = 28
+                let padding: CGFloat = 120
+                return CGSize(
+                    width: min(screenRect.width * 0.5, 600),
+                    height: min(CGFloat(subagents.count) * rowHeight + padding, 500)
+                )
+            case .pendingTool:
+                return CGSize(width: min(screenRect.width * 0.5, 600), height: 200)
+            }
         }
     }
 

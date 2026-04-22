@@ -198,6 +198,17 @@ enum L10n {
     static var qrPhraseExplain: String { tr("Explain more", "解释一下") }
     static var qrPhraseRetry: String { tr("Retry", "再试一次") }
 
+    // MARK: - Completion Panel — UI strings
+    static var qrSendFailed: String { tr("Failed to send — terminal unavailable", "发送失败，终端不可用") }
+    static var qrGoToTerminal: String { tr("Go to terminal", "前往终端") }
+    static var qrClose: String { tr("Close", "关闭") }
+    static func subagentDoneBadge(_ n: Int) -> String { tr("\(n) subagents done", "\(n) 个 subagent 完成") }
+    static var pendingToolAllow: String { tr("Allow", "允许") }
+    static var pendingToolDeny: String { tr("Deny", "拒绝") }
+    static func pendingToolAlwaysAllow(_ name: String) -> String { tr("Always Allow \(name)", "总是允许 \(name)") }
+    static var pendingToolNeedsApproval: String { tr("Needs approval", "需授权") }
+    static var pendingToolHighRiskHint: String { tr("High-risk operation — review diff in terminal", "高风险操作，请到终端查看 diff") }
+
     // MARK: - Settings window
     static var systemSettings: String { tr("System Settings", "系统设置") }
     static var openSettings: String { tr("Settings", "设置") }

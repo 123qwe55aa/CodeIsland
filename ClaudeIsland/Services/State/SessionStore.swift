@@ -50,6 +50,11 @@ actor SessionStore {
         return Array(sessions.values)
     }
 
+    /// Look up a session by its stable UI identity (pid-sessionId composite).
+    func session(withStableId stableId: String) -> SessionState? {
+        return sessions.values.first(where: { $0.stableId == stableId })
+    }
+
     // MARK: - Initialization
 
     init(livenessChecker: ProcessLivenessChecker = PosixLivenessChecker()) {

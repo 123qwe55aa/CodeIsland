@@ -35,6 +35,7 @@ struct NotchView: View {
     @AppStorage("autoCollapseOnMouseLeave") private var autoCollapseOnMouseLeave: Bool = true
     @AppStorage("compactCollapsed") private var compactCollapsed: Bool = false
     @ObservedObject private var notchStore: NotchCustomizationStore = .shared
+    @ObservedObject private var controller = CompletionPanelController.shared
     private var theme: ThemeResolver { ThemeResolver(theme: notchStore.customization.theme) }
 
     @Namespace private var activityNamespace
@@ -312,6 +313,12 @@ struct NotchView: View {
                     }
                     .simultaneousGesture(
                         TapGesture().onEnded {
+                            // Sticky Completion Panel: clicking the notch bar dismisses it.
+                            if case .completion(let entry) = viewModel.contentType,
+                               entry.variant.isSticky {
+                                controller.dismissFront(stableId: entry.stableId)
+                                return
+                            }
                             if viewModel.status != .opened {
                                 viewModel.notchOpen(reason: .click)
                             }
@@ -347,6 +354,20 @@ struct NotchView: View {
             // first appearance so the hit-test region matches the
             // visible notch from the very first frame.
             viewModel.currentExpansionWidth = expansionWidth
+        }
+        .onChange(of: controller.state.front) { _, front in
+            DebugLogger.log("CP/onChange", "front=\(front?.stableId.prefix(8) ?? "nil") variantId=\(front?.id.uuidString.prefix(8) ?? "nil") contentType=\(viewModel.contentType.id)")
+            if let front {
+                if case .completion(let current) = viewModel.contentType,
+                   current.stableId == front.stableId,
+                   current.id == front.id {
+                    return
+                }
+                viewModel.contentType = .completion(front)
+                viewModel.notchOpen(reason: .notification)
+            } else if case .completion = viewModel.contentType {
+                viewModel.contentType = .instances
+            }
         }
     }
 
@@ -497,6 +518,8 @@ struct NotchView: View {
                 )
             case .plugin(let pluginId):
                 PluginContentView(pluginId: pluginId, viewModel: viewModel)
+            case .completion(let entry):
+                CompletionPanelView(entry: entry)
             }
 
             // Plugin footer slot (e.g. mini player bar) — only if plugins provide one
@@ -550,20 +573,18 @@ struct NotchView: View {
         let currentIds = Set(sessions.map { $0.stableId })
         let newPendingIds = currentIds.subtracting(previousPendingIds)
 
-        if !newPendingIds.isEmpty &&
-           viewModel.status == .closed {
-            // Smart suppression: don't expand if user's terminal is frontmost
+        if !newPendingIds.isEmpty && viewModel.status == .closed {
             let termFront = TerminalVisibilityDetector.isTerminalFrontmost()
-            DebugLogger.log("Suppress", "[pending] newIds=\(newPendingIds.count) termFront=\(termFront)")
             if smartSuppression && termFront {
                 DebugLogger.log("Suppress", "[pending] Suppressed — terminal frontmost")
             } else {
-                DebugLogger.log("Suppress", "[pending] Opening notification")
-                viewModel.notchOpen(reason: .notification)
-                // If the pending session is AskUserQuestion, show the question UI
+                // Only AskUserQuestion goes to the legacy question UI.
+                // Non-AskUserQuestion pending tools are handled by
+                // CompletionPanelController via its SessionStore sink.
                 if let askSession = sessions.first(where: {
                     newPendingIds.contains($0.stableId) && $0.pendingToolName == "AskUserQuestion"
                 }) {
+                    viewModel.notchOpen(reason: .notification)
                     viewModel.showQuestion(for: askSession)
                 }
             }
@@ -631,41 +652,6 @@ struct NotchView: View {
                     // Bounce back after a short delay
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         isBouncing = false
-                    }
-                }
-            }
-
-            // Auto-popup: if a session transitioned FROM processing/compacting TO waitingForInput,
-            // expand the notch and show that session's chat after a 1-second delay.
-            // Uses notifiableSessions so a silent Codex turn won't pop.
-            let sessionsFromWorkingState = notifiableSessions.filter { session in
-                guard let prevPhase = previousPhases[session.stableId] else { return false }
-                return prevPhase == .processing || prevPhase == .compacting
-            }
-
-            let autoExpandOnComplete = UserDefaults.standard.object(forKey: "autoExpandOnComplete") as? Bool ?? true
-            if autoExpandOnComplete && !sessionsFromWorkingState.isEmpty && viewModel.status == .closed {
-                let completedSession = sessionsFromWorkingState[0]
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [self] in
-                    guard viewModel.status == .closed else { return }
-                    guard sessionMonitor.instances.contains(where: {
-                        $0.stableId == completedSession.stableId && $0.phase == .waitingForInput
-                    }) else { return }
-
-                    // Suppress if the session's terminal is frontmost
-                    let isFront = TerminalVisibilityDetector.isSessionTerminalFrontmost(completedSession)
-                    DebugLogger.log("Suppress", "session=\(completedSession.projectName) isFront=\(isFront) termApp=\(completedSession.terminalApp ?? "nil")")
-                    if isFront {
-                        DebugLogger.log("Suppress", "Suppressed — user is looking at terminal")
-                        return
-                    }
-
-                    DebugLogger.log("Suppress", "Opening notification popup")
-                    viewModel.notchOpen(reason: .notification)
-                    if let currentSession = sessionMonitor.instances.first(where: {
-                        $0.stableId == completedSession.stableId
-                    }) {
-                        viewModel.showChat(for: currentSession)
                     }
                 }
             }
