@@ -166,8 +166,22 @@ class NotchViewModel: ObservableObject {
             )
         case .completion(let entry):
             switch entry.variant {
-            case .claudeStop:
-                return CGSize(width: min(screenRect.width * 0.5, 600), height: 180)
+            case .claudeStop(let summary):
+                // Dynamic width based on summary length — short replies get a
+                // compact panel, long replies expand up to ~85% of screen width.
+                let charCount = summary.count
+                let width: CGFloat
+                if charCount <= 60 {
+                    width = min(screenRect.width * 0.42, 520)
+                } else if charCount <= 140 {
+                    width = min(screenRect.width * 0.55, 760)
+                } else if charCount <= 260 {
+                    width = min(screenRect.width * 0.70, 980)
+                } else {
+                    width = min(screenRect.width * 0.85, 1240)
+                }
+                // Height: reserve 3 lines of summary + header + phrase row + CTA.
+                return CGSize(width: width, height: 190)
             case .subagentDone(let subagents):
                 let rowHeight: CGFloat = 28
                 let padding: CGFloat = 120

@@ -49,11 +49,9 @@ struct ClaudeStopVariantView: View {
             .padding(.horizontal, 14).padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        // Hard-constrained panel dimensions. NotchViewModel.openedSize
-        // returns 600×180 for .completion(.claudeStop); by applying the
-        // same ceiling here we guarantee the panel CANNOT stretch wider
-        // regardless of any intermediate SwiftUI layout quirk.
-        .frame(maxWidth: 600, maxHeight: 180, alignment: .leading)
+        // Natural sizing — let the notch window's openedSize (derived from
+        // summary length in NotchViewModel) drive the frame. The panel
+        // content fills whatever width the notch allocates.
         .onAppear { controller.setPanelVisible(true) }
         .onDisappear { controller.setPanelVisible(false) }
     }
