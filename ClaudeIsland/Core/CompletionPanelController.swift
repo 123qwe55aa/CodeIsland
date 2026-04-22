@@ -252,7 +252,19 @@ final class CompletionPanelController: NSObject, ObservableObject {
 
     private func resolveSummary(for session: SessionState) -> String {
         if session.codexTranscriptPath == nil {
-            // Claude session — no transcriptPath helper; use conversationInfo.lastMessage
+            // Claude session — read the transcript directly and find the last
+            // assistant TEXT message. We cannot use conversationInfo.lastMessage
+            // because ConversationParser may populate it from tool INPUT when
+            // the last transcript entry is a tool call (see ConversationParser
+            // line ~178), which surfaces as e.g. a raw bash command instead of
+            // the assistant's prose reply.
+            let messages = ConversationParser.shared.parseFullConversation(
+                sessionId: session.sessionId, cwd: session.cwd
+            )
+            if let lastAssistantText = messages.last(where: { $0.role == .assistant })?.textContent,
+               !lastAssistantText.isEmpty {
+                return lastAssistantText
+            }
             return session.conversationInfo.lastMessage ?? ""
         }
         // Codex session — attempt async transcript parse, return fast fallback immediately

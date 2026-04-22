@@ -102,12 +102,15 @@ struct ClaudeStopVariantView: View {
         let stableId = entry.stableId
         Task {
             guard let session = await SessionStore.shared.session(withStableId: stableId) else {
+                DebugLogger.log("CP/send", "no session for stableId=\(stableId.prefix(8))")
                 await MainActor.run {
                     controller.recordSendFailure(stableId: stableId, message: L10n.qrSendFailed)
                 }
                 return
             }
+            DebugLogger.log("CP/send", "attempt session=\(stableId.prefix(8)) termApp=\(session.terminalApp ?? "nil") pid=\(session.pid) cwd=\(session.cwd) text=\(text)")
             let ok = await TerminalWriter.shared.sendText(text + "\n", to: session)
+            DebugLogger.log("CP/send", "result session=\(stableId.prefix(8)) ok=\(ok)")
             await MainActor.run {
                 if ok { controller.dismissFront(stableId: stableId) }
                 else  { controller.recordSendFailure(stableId: stableId, message: L10n.qrSendFailed) }
