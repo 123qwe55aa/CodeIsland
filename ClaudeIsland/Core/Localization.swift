@@ -485,11 +485,11 @@ enum L10n {
     // ocean, aurora, mocha, lavender, cherry) were dropped on reset.
     static var notchThemeClassic: String { tr("Classic", "经典") }
     static var notchThemeForest: String { tr("Forest", "森林") }
-    static var notchThemeNeonTokyo: String { tr("Neon Tokyo", "霓虹东京") }
+    static var notchThemeNeonTokyo: String { tr("Night Circuit", "夜行电路") }
     static var notchThemeSunset: String { tr("Sunset", "落日") }
     static var notchThemeRetroArcade: String { tr("Retro Arcade", "复古游戏机") }
     static var notchThemeHighContrast: String { tr("High Contrast", "高对比") }
-    static var notchThemeSakura: String { tr("Sakura", "樱花") }
+    static var notchThemeSakura: String { tr("Pink Mist", "粉雾") }
     static var notchHoverSpeed: String { tr("Hover Speed", "展开速度") }
     static var notchHoverInstant: String { tr("Fast", "即时") }
     static var notchHoverNormal: String { tr("1s", "1秒") }
@@ -516,14 +516,15 @@ enum L10n {
     static var notchEditReset: String { tr("Reset", "复位") }
     static var notchEditPresetDisabledTooltip: String { tr("Your device doesn't have a hardware notch", "你的设备没有硬件刘海") }
     static func notchThemeName(_ id: NotchThemeID) -> String {
-        switch id {
-        case .classic:      return notchThemeClassic
-        case .forest:       return notchThemeForest
-        case .neonTokyo:    return notchThemeNeonTokyo
-        case .sunset:       return notchThemeSunset
-        case .retroArcade:  return notchThemeRetroArcade
-        case .highContrast: return notchThemeHighContrast
-        case .sakura:       return notchThemeSakura
+        switch id.rawValue {
+        case NotchThemeID.classic.rawValue: return notchThemeClassic
+        case NotchThemeID.forest.rawValue: return notchThemeForest
+        case NotchThemeID.neonTokyo.rawValue: return notchThemeNeonTokyo
+        case NotchThemeID.sunset.rawValue: return notchThemeSunset
+        case NotchThemeID.retroArcade.rawValue: return notchThemeRetroArcade
+        case NotchThemeID.highContrast.rawValue: return notchThemeHighContrast
+        case NotchThemeID.sakura.rawValue: return notchThemeSakura
+        default: return ThemeRegistry.shared.displayName(for: id)
         }
     }
 }

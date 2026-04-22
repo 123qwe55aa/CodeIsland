@@ -79,6 +79,7 @@ import UserNotifications
 
         // Load native plugins from ~/.config/codeisland/plugins/
         NativePluginManager.shared.loadAll()
+        ThemeRegistry.shared.loadAll()
 
         // Initialize CodeLight sync (connects to server if configured)
         _ = SyncManager.shared

@@ -167,16 +167,22 @@ enum BuddyStyle: String, Codable, CaseIterable, Identifiable {
 /// via Claude Design (island/project/themes.jsx). Older raw values
 /// persisted from the v1 palette ("paper", "cyber", "mint", etc.) fall
 /// back to `.classic` on decode — see NotchCustomization.init(from:).
-enum NotchThemeID: String, Codable, CaseIterable, Identifiable {
-    case classic
-    case forest
-    case neonTokyo
-    case sunset
-    case retroArcade
-    case highContrast
-    case sakura
+struct NotchThemeID: RawRepresentable, Codable, Hashable, Identifiable {
+    let rawValue: String
+
+    init(rawValue: String) {
+        self.rawValue = rawValue
+    }
 
     var id: String { rawValue }
+
+    static let classic = NotchThemeID(rawValue: "classic")
+    static let forest = NotchThemeID(rawValue: "forest")
+    static let neonTokyo = NotchThemeID(rawValue: "neonTokyo")
+    static let sunset = NotchThemeID(rawValue: "sunset")
+    static let retroArcade = NotchThemeID(rawValue: "retroArcade")
+    static let highContrast = NotchThemeID(rawValue: "highContrast")
+    static let sakura = NotchThemeID(rawValue: "sakura")
 }
 
 /// Four-step relative font scale. String raw values for stable

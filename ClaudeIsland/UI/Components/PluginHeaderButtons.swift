@@ -12,6 +12,7 @@ import SwiftUI
 struct PluginHeaderButtons: View {
     let viewModel: NotchViewModel
     @ObservedObject private var manager = NativePluginManager.shared
+    @ObservedObject private var notchStore: NotchCustomizationStore = .shared
     @State private var showOverflow = false
 
     private let maxVisible = 4
@@ -24,6 +25,8 @@ struct PluginHeaderButtons: View {
         Array(manager.loadedPlugins.dropFirst(maxVisible))
     }
 
+    private var theme: ThemeResolver { ThemeResolver(theme: notchStore.customization.theme) }
+
     var body: some View {
         // Visible icons
         ForEach(visiblePlugins) { plugin in
@@ -32,7 +35,7 @@ struct PluginHeaderButtons: View {
 
         // Overflow "..." button when >4 plugins
         if !overflowPlugins.isEmpty {
-            HeaderIconButton(icon: "ellipsis", hoverColor: Color(red: 0.6, green: 0.8, blue: 1.0)) {
+            HeaderIconButton(icon: "ellipsis", hoverColor: theme.workingColor) {
                 showOverflow.toggle()
             }
             .popover(isPresented: $showOverflow, attachmentAnchor: .rect(.bounds), arrowEdge: .trailing) {
@@ -50,7 +53,7 @@ struct PluginHeaderButtons: View {
                                     .font(.system(size: 11, weight: .medium))
                                 Spacer()
                             }
-                            .foregroundColor(.white.opacity(0.8))
+                            .foregroundColor(theme.primaryText.opacity(0.8))
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
                             .contentShape(Rectangle())
@@ -60,7 +63,7 @@ struct PluginHeaderButtons: View {
                 }
                 .padding(6)
                 .frame(minWidth: 140)
-                .background(Color(white: 0.15))
+                .background(theme.overlay)
             }
         }
     }
@@ -69,9 +72,12 @@ struct PluginHeaderButtons: View {
 private struct PluginHeaderButton: View {
     let plugin: NativePluginManager.LoadedPlugin
     let viewModel: NotchViewModel
+    @ObservedObject private var notchStore: NotchCustomizationStore = .shared
+
+    private var theme: ThemeResolver { ThemeResolver(theme: notchStore.customization.theme) }
 
     var body: some View {
-        HeaderIconButton(icon: plugin.icon) {
+        HeaderIconButton(icon: plugin.icon, hoverColor: theme.needsYouColor) {
             viewModel.showPlugin(plugin.id)
         }
     }
@@ -81,15 +87,18 @@ private struct PluginHeaderButton: View {
 /// Used for both plugin buttons and the settings gear.
 struct HeaderIconButton: View {
     let icon: String
-    var hoverColor: Color = Color(red: 1.0, green: 0.4, blue: 0.6) // fluorescent pink default
+    var hoverColor: Color? = nil
     let action: () -> Void
+    @ObservedObject private var notchStore: NotchCustomizationStore = .shared
     @State private var isHovered = false
+
+    private var theme: ThemeResolver { ThemeResolver(theme: notchStore.customization.theme) }
 
     var body: some View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 11))
-                .foregroundColor(isHovered ? hoverColor : .white.opacity(0.5))
+                .foregroundColor(isHovered ? (hoverColor ?? theme.workingColor) : theme.secondaryText.opacity(0.7))
                 .scaleEffect(isHovered ? 1.2 : 1.0)
                 .animation(.easeOut(duration: 0.12), value: isHovered)
                 .frame(width: 28, height: 28)

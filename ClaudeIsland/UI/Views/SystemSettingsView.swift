@@ -20,6 +20,10 @@ import ApplicationServices
 import ServiceManagement
 import SwiftUI
 
+private func settingsTheme() -> ThemeResolver {
+    ThemeResolver(theme: NotchCustomizationStore.shared.customization.theme)
+}
+
 // MARK: - Notch menu entry row
 
 struct SystemSettingsRow: View {
@@ -50,7 +54,7 @@ struct SystemSettingsRow: View {
             .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isHovered ? Color.white.opacity(0.08) : Color.clear)
+                    .fill(isHovered ? Theme.sidebarActiveFill : Color.clear)
             )
         }
         .buttonStyle(.plain)
@@ -202,26 +206,46 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 /// Palette is lifted from the Anthropic-style reference design — see
 /// `~/Desktop/1_files/UI.jsx` and the System Settings HTML mock.
 enum Theme {
-    // Sidebar — warm charcoal, NOT lime anymore.
-    static let sidebarFill = Color(red: 0x20/255, green: 0x1F/255, blue: 0x27/255)
-    static let sidebarText = Color.white
-    static let sidebarActiveFill = Color.white.opacity(0.08)
-    static let sidebarHoverFill = Color.white.opacity(0.04)
-    static let sidebarBorder = Color.white.opacity(0.06)
+    private static var resolver: ThemeResolver { settingsTheme() }
 
-    // Detail panel — graphite, close to real macOS System Settings.
-    static let detailFill = Color(red: 0x1C/255, green: 0x1C/255, blue: 0x1E/255)
-    static let detailText = Color.white
+    // Sidebar / detail surfaces now derive from the global semantic theme.
+    static var sidebarFill: Color { resolver.overlay.opacity(resolver.isRetroArcade ? 0.92 : 0.94) }
+    static var sidebarText: Color { resolver.primaryText }
+    static var sidebarActiveFill: Color { resolver.primaryText.opacity(resolver.isRetroArcade ? 0.12 : 0.08) }
+    static var sidebarHoverFill: Color { resolver.primaryText.opacity(resolver.isRetroArcade ? 0.08 : 0.04) }
+    static var sidebarBorder: Color { resolver.border.opacity(resolver.isRetroArcade ? 0.3 : 0.16) }
 
-    // Cards and rows.
-    static let cardFill = Color.white.opacity(0.03)
-    static let cardBorder = Color.white.opacity(0.08)
-    static let rowDivider = Color.white.opacity(0.06)
-    static let subtle = Color.white.opacity(0.42)
-    static let subtleStrong = Color.white.opacity(0.72)
+    static var detailFill: Color { resolver.background }
+    static var detailText: Color { resolver.primaryText }
+    static var border: Color { resolver.border }
 
-    // Accent (neon lime) — used sparingly: toggles, active icons, focus.
-    static let accent = Color(red: 0xC6/255, green: 0xFF/255, blue: 0x3A/255)
+    static var cardFill: Color { resolver.overlay.opacity(resolver.isRetroArcade ? 0.18 : 0.32) }
+    static var cardBorder: Color { resolver.border.opacity(resolver.isRetroArcade ? 0.32 : 0.22) }
+    static var rowDivider: Color { resolver.border.opacity(resolver.isRetroArcade ? 0.22 : 0.16) }
+    static var subtle: Color { resolver.mutedText }
+    static var subtleStrong: Color { resolver.secondaryText }
+
+    // Accent now follows semantic working/done emphasis instead of a fixed lime.
+    static var accent: Color { resolver.doneColor }
+    static var controlFill: Color { resolver.overlay.opacity(resolver.isRetroArcade ? 0.14 : 0.18) }
+    static var controlBorder: Color { resolver.border.opacity(resolver.isRetroArcade ? 0.28 : 0.22) }
+    static var iconTileFill: Color { resolver.overlay.opacity(resolver.isRetroArcade ? 0.16 : 0.18) }
+    static var iconTileBorder: Color { resolver.border.opacity(resolver.isRetroArcade ? 0.28 : 0.22) }
+    static var fieldFill: Color { resolver.overlay.opacity(resolver.isRetroArcade ? 0.22 : 0.44) }
+    static var fieldBorder: Color { resolver.border.opacity(resolver.isRetroArcade ? 0.34 : 0.28) }
+    static var placeholder: Color { resolver.mutedText.opacity(0.9) }
+    static var shadow: Color { Color.black.opacity(resolver.isRetroArcade ? 0.22 : 0.5) }
+    static var destructiveText: Color { resolver.errorColor }
+    static var destructiveFill: Color { resolver.errorColor.opacity(0.1) }
+    static var destructiveBorder: Color { resolver.errorColor.opacity(0.18) }
+    static var success: Color { resolver.doneColor }
+    static var warning: Color { resolver.needsYouColor }
+    static var error: Color { resolver.errorColor }
+    static var neutralDot: Color { resolver.mutedText.opacity(0.5) }
+    static var backgroundInk: Color { resolver.inverseText }
+    static var titlebarGlyph: Color { resolver.inverseText.opacity(0.6) }
+    static var knobShadow: Color { Color.black.opacity(resolver.isRetroArcade ? 0.18 : 0.35) }
+    static var toggleActiveBorder: Color { resolver.inverseText.opacity(0.25) }
 
     // Real macOS traffic-light colors.
     static let tlRed = Color(red: 1.00, green: 0.373, blue: 0.341)
@@ -266,9 +290,9 @@ private struct SystemSettingsContentView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                .strokeBorder(Theme.cardBorder, lineWidth: 0.5)
         )
-        .shadow(color: .black.opacity(0.5), radius: 30, y: 12)
+        .shadow(color: Theme.shadow, radius: 30, y: 12)
         .onHover { isHoveringTitleBar = $0 }
     }
 
@@ -292,13 +316,13 @@ private struct SystemSettingsContentView: View {
 
             Text(L10n.systemSettings)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.white.opacity(0.85))
+                .foregroundColor(Theme.detailText.opacity(0.85))
         }
         .frame(height: 38)
         .background(Theme.sidebarFill)
         .overlay(
             Rectangle()
-                .fill(Color.black.opacity(0.4))
+                .fill(Theme.border)
                 .frame(height: 0.5),
             alignment: .bottom
         )
@@ -313,7 +337,7 @@ private struct SystemSettingsContentView: View {
                 .overlay(
                     Image(systemName: glyph)
                         .font(.system(size: 7, weight: .bold))
-                        .foregroundColor(.black.opacity(isHoveringTitleBar ? 0.6 : 0))
+                        .foregroundColor(Theme.titlebarGlyph.opacity(isHoveringTitleBar ? 1 : 0))
                 )
                 .overlay(Circle().strokeBorder(Theme.tlStroke, lineWidth: 0.5))
         }
@@ -332,7 +356,7 @@ private struct SystemSettingsContentView: View {
             Spacer()
 
             Rectangle()
-                .fill(Color.white.opacity(0.06))
+                .fill(Theme.rowDivider)
                 .frame(height: 0.5)
                 .padding(.horizontal, 10)
 
@@ -342,11 +366,11 @@ private struct SystemSettingsContentView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "power")
                         .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(0.55))
+                        .foregroundColor(Theme.subtle)
                         .frame(width: 18)
                     Text(L10n.isChinese ? "退出" : "Quit")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.white.opacity(0.7))
+                        .foregroundColor(Theme.subtleStrong)
                     Spacer()
                 }
                 .padding(.horizontal, 14)
@@ -359,7 +383,7 @@ private struct SystemSettingsContentView: View {
         .background(Theme.sidebarFill)
         .overlay(
             Rectangle()
-                .fill(Color.black.opacity(0.3))
+                .fill(Theme.sidebarBorder)
                 .frame(width: 0.5),
             alignment: .trailing
         )
@@ -388,7 +412,7 @@ private struct SystemSettingsContentView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Text(tab.label)
                         .font(.system(size: 26, weight: .semibold))
-                        .foregroundColor(.white)
+                        .foregroundColor(Theme.detailText)
                         .tracking(-0.4)
                     Text(tab.englishSubtitle)
                         .font(.system(size: 12))
@@ -434,11 +458,11 @@ private struct SidebarPillRow: View {
             HStack(spacing: 10) {
                 Image(systemName: icon)
                     .font(.system(size: 12))
-                    .foregroundColor(isSelected ? Theme.accent : .white.opacity(0.55))
+                    .foregroundColor(isSelected ? Theme.accent : Theme.subtle)
                     .frame(width: 18)
                 Text(label)
                     .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                    .foregroundColor(isSelected ? .white : Theme.subtleStrong)
+                    .foregroundColor(isSelected ? Theme.detailText : Theme.subtleStrong)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 10)
@@ -511,11 +535,11 @@ private struct IOSToggle: View {
                     .fill(isOn ? AnyShapeStyle(LinearGradient(
                         colors: [Theme.accent, Theme.accent.opacity(0.87)],
                         startPoint: .top, endPoint: .bottom
-                    )) : AnyShapeStyle(Color.white.opacity(0.10)))
+                    )) : AnyShapeStyle(Theme.controlFill))
                     .overlay(
                         Capsule()
                             .strokeBorder(
-                                isOn ? Color.black.opacity(0.25) : Color.white.opacity(0.08),
+                                isOn ? Theme.toggleActiveBorder : Theme.controlBorder,
                                 lineWidth: 0.5
                             )
                     )
@@ -531,7 +555,7 @@ private struct IOSToggle: View {
                         startRadius: 0, endRadius: 14
                     ))
                     .frame(width: 19, height: 19)
-                    .shadow(color: .black.opacity(0.35), radius: 1.5, y: 1)
+                    .shadow(color: Theme.knobShadow, radius: 1.5, y: 1)
                     .padding(2)
             }
             .frame(width: 38, height: 23)
@@ -553,20 +577,20 @@ private struct TabToggle: View {
         HStack(spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 7)
-                    .fill(Color.white.opacity(0.05))
+                    .fill(Theme.iconTileFill)
                     .overlay(
                         RoundedRectangle(cornerRadius: 7)
-                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                            .strokeBorder(Theme.iconTileBorder, lineWidth: 0.5)
                     )
                 Image(systemName: icon)
                     .font(.system(size: 12))
-                    .foregroundColor(isOn ? Theme.accent : .white.opacity(0.72))
+                    .foregroundColor(isOn ? Theme.accent : Theme.subtleStrong)
             }
             .frame(width: 28, height: 28)
 
             Text(label)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.white.opacity(0.92))
+                .foregroundColor(Theme.detailText.opacity(0.92))
 
             Spacer(minLength: 0)
 
@@ -648,14 +672,14 @@ private struct SettingRow<Control: View>: View {
             if let icon {
                 ZStack {
                     RoundedRectangle(cornerRadius: 7)
-                        .fill(Color.white.opacity(0.05))
+                        .fill(Theme.iconTileFill)
                         .overlay(
                             RoundedRectangle(cornerRadius: 7)
-                                .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                                .strokeBorder(Theme.iconTileBorder, lineWidth: 0.5)
                         )
                     Image(systemName: icon)
                         .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(0.75))
+                        .foregroundColor(Theme.subtleStrong)
                 }
                 .frame(width: 28, height: 28)
             }
@@ -663,7 +687,7 @@ private struct SettingRow<Control: View>: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white.opacity(0.92))
+                    .foregroundColor(Theme.detailText.opacity(0.92))
                 if let sublabel, !sublabel.isEmpty {
                     Text(sublabel)
                         .font(.system(size: 11))
@@ -701,10 +725,10 @@ private struct InfoRow: View {
         HStack(alignment: .top, spacing: 10) {
             dot
             (Text(title + "：")
-                .foregroundColor(.white.opacity(0.9))
+                .foregroundColor(Theme.detailText.opacity(0.9))
                 .font(.system(size: 12, weight: .medium))
              + Text(message)
-                .foregroundColor(.white.opacity(0.6))
+                .foregroundColor(Theme.subtleStrong)
                 .font(.system(size: 12)))
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
@@ -717,16 +741,16 @@ private struct InfoRow: View {
         let isPos = variant == .pos
         ZStack {
             Circle()
-                .fill(isPos ? Theme.accent : Color.white.opacity(0.06))
+                .fill(isPos ? Theme.accent : Theme.controlFill)
                 .overlay(
                     Circle().strokeBorder(
-                        isPos ? Color.clear : Color.white.opacity(0.12),
+                        isPos ? Color.clear : Theme.controlBorder,
                         lineWidth: 0.5
                     )
                 )
             Text(glyph)
                 .font(.system(size: 9, weight: .bold))
-                .foregroundColor(isPos ? Color(red: 0.04, green: 0.04, blue: 0.05) : .white.opacity(0.7))
+                .foregroundColor(isPos ? Theme.backgroundInk : Theme.subtleStrong)
         }
         .frame(width: 16, height: 16)
         .padding(.top, 1)
@@ -839,24 +863,24 @@ private struct AnthropicProxyRow: View {
                 if proxyURL.isEmpty {
                     Text(L10n.anthropicApiProxyPlaceholder)
                         .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(Color(red: 0.62, green: 0.62, blue: 0.65))
+                        .foregroundColor(Theme.placeholder)
                         .padding(.horizontal, 12)
                         .allowsHitTesting(false)
                 }
                 TextField("", text: $proxyURL)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.95))
+                    .foregroundColor(Theme.detailText.opacity(0.95))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
             }
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.black.opacity(0.35))
+                    .fill(Theme.fieldFill)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
+                    .strokeBorder(Theme.fieldBorder, lineWidth: 0.5)
             )
 
             VStack(alignment: .leading, spacing: 9) {
@@ -933,20 +957,20 @@ private struct SettingsLanguageRow: View {
                 HStack(spacing: 5) {
                     Text(currentLabel)
                         .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(0.85))
+                        .foregroundColor(Theme.detailText.opacity(0.85))
                     Image(systemName: "chevron.down")
                         .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.55))
+                        .foregroundColor(Theme.subtle)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .background(
                     RoundedRectangle(cornerRadius: 7)
-                        .fill(Color.white.opacity(0.06))
+                        .fill(Theme.controlFill)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 7)
-                        .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
+                        .strokeBorder(Theme.controlBorder, lineWidth: 0.5)
                 )
             }
             .menuStyle(.borderlessButton)
@@ -977,7 +1001,7 @@ private struct SettingsAccessibilityRow: View {
                     Circle().fill(Theme.accent).frame(width: 6, height: 6)
                     Text(L10n.enabled)
                         .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.55))
+                        .foregroundColor(Theme.subtle)
                 }
             } else {
                 HStack(spacing: 6) {
@@ -992,6 +1016,7 @@ private struct SettingsAccessibilityRow: View {
                             .padding(.vertical, 5)
                             .background(RoundedRectangle(cornerRadius: 6).fill(Theme.accent))
                     }
+<<<<<<< Updated upstream
                     .buttonStyle(.plain)
                     .disabled(isRepairing)
 
@@ -1009,6 +1034,15 @@ private struct SettingsAccessibilityRow: View {
                     }
                     .buttonStyle(.plain)
                     .help(L10n.openAccessibilitySettings)
+=======
+                } label: {
+                    Text(L10n.enable)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Theme.backgroundInk)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Theme.accent))
+>>>>>>> Stashed changes
                 }
             }
         }
@@ -1118,7 +1152,7 @@ private struct CodeLightTab: View {
                         .font(.system(size: 14))
                         .foregroundColor(syncManager.isEnabled
                                          ? Theme.accent
-                                         : Color.white.opacity(0.4))
+                                         : Theme.subtle)
                         .frame(width: 18)
 
                     VStack(alignment: .leading, spacing: 2) {
@@ -1126,16 +1160,16 @@ private struct CodeLightTab: View {
                            !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             Text(URL(string: url)?.host ?? url)
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.white.opacity(0.9))
+                                .foregroundColor(Theme.detailText.opacity(0.9))
                             Text(syncManager.isEnabled
                                  ? (L10n.isChinese ? "在线" : "Online")
                                  : (L10n.isChinese ? "未连接" : "Not connected"))
                                 .font(.system(size: 10))
-                                .foregroundColor(.white.opacity(0.5))
+                                .foregroundColor(Theme.subtle)
                         } else {
                             Text(L10n.isChinese ? "尚未配置服务器" : "No server configured")
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.white.opacity(0.7))
+                                .foregroundColor(Theme.subtleStrong)
                         }
                     }
 
@@ -1150,7 +1184,7 @@ private struct CodeLightTab: View {
                             Text(L10n.pairNewPhone)
                                 .font(.system(size: 11, weight: .semibold))
                         }
-                        .foregroundColor(.black)
+                        .foregroundColor(Theme.backgroundInk)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(
@@ -1193,10 +1227,10 @@ private struct AdvancedTab: View {
                     .padding(.vertical, 9)
                     .background(
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.white.opacity(0.06))
+                            .fill(Theme.controlFill)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .strokeBorder(Theme.cardBorder, lineWidth: 0.5)
+                                    .strokeBorder(Theme.controlBorder, lineWidth: 0.5)
                             )
                     )
                 }
@@ -1256,7 +1290,7 @@ private struct AboutTab: View {
                 HStack(spacing: 10) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 16))
-                        .foregroundColor(Color(red: 0xCA/255, green: 0xFF/255, blue: 0x00/255))
+                        .foregroundColor(Theme.accent)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(L10n.pluginMarketplaceTitle)
                             .font(.system(size: 12, weight: .semibold))
@@ -1276,12 +1310,12 @@ private struct AboutTab: View {
                             Image(systemName: "arrow.up.right")
                                 .font(.system(size: 9, weight: .bold))
                         }
-                        .foregroundColor(.black)
+                        .foregroundColor(Theme.backgroundInk)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(
                             RoundedRectangle(cornerRadius: 6)
-                                .fill(Color(red: 0xCA/255, green: 0xFF/255, blue: 0x00/255))
+                                .fill(Theme.accent)
                         )
                     }
                     .buttonStyle(.plain)
@@ -1319,16 +1353,16 @@ private struct AboutTab: View {
                     Text(L10n.quitApp)
                         .font(.system(size: 12, weight: .medium))
                 }
-                .foregroundColor(.red.opacity(0.8))
+                .foregroundColor(Theme.destructiveText)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.red.opacity(0.08))
+                        .fill(Theme.destructiveFill)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(Color.red.opacity(0.15), lineWidth: 0.5)
+                        .strokeBorder(Theme.destructiveBorder, lineWidth: 0.5)
                 )
             }
             .buttonStyle(.plain)
@@ -1343,7 +1377,7 @@ private struct AboutTab: View {
             Text(label)
                 .font(.system(size: 12, weight: .semibold))
         }
-        .foregroundColor(.black)
+        .foregroundColor(Theme.backgroundInk)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
         .background(
@@ -1358,8 +1392,6 @@ private struct AboutTab: View {
 private struct CheckForUpdatesCard: View {
     @ObservedObject var updater: UpdaterManager
     @State private var isHovered = false
-
-    private let brandLime = Color(red: 0xCA/255, green: 0xFF/255, blue: 0x00/255)
 
     var body: some View {
         SettingsCard {
@@ -1376,7 +1408,7 @@ private struct CheckForUpdatesCard: View {
                         .font(.system(size: 9, weight: .semibold))
                         .opacity(0.4)
                 }
-                .foregroundColor(isHovered ? brandLime : Theme.detailText.opacity(0.9))
+                .foregroundColor(isHovered ? Theme.accent : Theme.detailText.opacity(0.9))
             }
             .buttonStyle(.plain)
             .disabled(!updater.canCheckForUpdates)
@@ -1449,7 +1481,7 @@ private struct CmuxConnectionTab: View {
                                 Text(testState == .sending ? L10n.testSending : L10n.testSendButton)
                                     .font(.system(size: 12, weight: .semibold))
                             }
-                            .foregroundColor(.black)
+                            .foregroundColor(Theme.backgroundInk)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
                             .background(RoundedRectangle(cornerRadius: 8).fill(Theme.accent))
@@ -1464,10 +1496,10 @@ private struct CmuxConnectionTab: View {
                                 Image(systemName: "arrow.clockwise").font(.system(size: 11))
                                 Text(L10n.refreshStatus).font(.system(size: 12, weight: .medium))
                             }
-                            .foregroundColor(.white.opacity(0.85))
+                            .foregroundColor(Theme.detailText.opacity(0.85))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.06)))
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Theme.controlFill))
                         }
                         .buttonStyle(.plain)
                         .disabled(isRefreshing)
@@ -1476,7 +1508,7 @@ private struct CmuxConnectionTab: View {
                     if testState == .done, !testDetail.isEmpty {
                         Text(testDetail)
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.75))
+                            .foregroundColor(Theme.subtleStrong)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -1511,11 +1543,11 @@ private struct CmuxConnectionTab: View {
                             Spacer()
                             Image(systemName: "chevron.right").font(.system(size: 9)).opacity(0.4)
                         }
-                        .foregroundColor(.white.opacity(0.85))
+                        .foregroundColor(Theme.detailText.opacity(0.85))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
-                        .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.04)))
-                        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+                        .background(RoundedRectangle(cornerRadius: 7).fill(Theme.controlFill))
+                        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Theme.controlBorder, lineWidth: 0.5))
                     }
                     .buttonStyle(.plain)
                     .disabled(automationState == .requesting)
@@ -1523,7 +1555,7 @@ private struct CmuxConnectionTab: View {
                     if automationState == .done, !automationDetail.isEmpty {
                         Text(automationDetail)
                             .font(.system(size: 10))
-                            .foregroundColor(.white.opacity(0.6))
+                            .foregroundColor(Theme.subtleStrong)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -1568,15 +1600,15 @@ private struct CmuxConnectionTab: View {
         HStack(spacing: 10) {
             Image(systemName: icon)
                 .font(.system(size: 12))
-                .foregroundColor(.white.opacity(0.7))
+                .foregroundColor(Theme.subtleStrong)
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.9))
+                    .foregroundColor(Theme.detailText.opacity(0.9))
                 Text(detail)
                     .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.55))
+                    .foregroundColor(Theme.subtle)
             }
             Spacer()
             Circle()
@@ -1588,9 +1620,9 @@ private struct CmuxConnectionTab: View {
 
     private func dotColor(_ ok: Bool?) -> Color {
         switch ok {
-        case .some(true): return Color(red: 0.3, green: 0.85, blue: 0.35)
-        case .some(false): return Color(red: 0.95, green: 0.35, blue: 0.35)
-        case .none: return Color.white.opacity(0.25)
+        case .some(true): return Theme.success
+        case .some(false): return Theme.error
+        case .none: return Theme.neutralDot
         }
     }
 
@@ -1606,11 +1638,11 @@ private struct CmuxConnectionTab: View {
                 Spacer()
                 Image(systemName: "chevron.right").font(.system(size: 9)).opacity(0.4)
             }
-            .foregroundColor(.white.opacity(0.85))
+            .foregroundColor(Theme.detailText.opacity(0.85))
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.04)))
-            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+            .background(RoundedRectangle(cornerRadius: 7).fill(Theme.controlFill))
+            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Theme.controlBorder, lineWidth: 0.5))
         }
         .buttonStyle(.plain)
     }
@@ -1685,7 +1717,7 @@ private struct LogsTab: View {
         if streamer.lines.isEmpty {
             Text(L10n.logsEmpty)
                 .font(.system(size: 11))
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(Theme.subtle)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 24)
         } else {
@@ -1720,12 +1752,12 @@ private struct LogsTab: View {
     private func colorFor(line: String) -> Color {
         let lower = line.lowercased()
         if lower.contains("error") || lower.contains("failed") {
-            return Color(red: 1.0, green: 0.55, blue: 0.55)
+            return Theme.error
         }
         if lower.contains("warning") || lower.contains("timeout") {
-            return Color(red: 1.0, green: 0.85, blue: 0.4)
+            return Theme.warning
         }
-        return Color.white.opacity(0.8)
+        return Theme.detailText.opacity(0.8)
     }
 
     private func toolbarButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
@@ -1734,11 +1766,11 @@ private struct LogsTab: View {
                 Image(systemName: icon).font(.system(size: 11))
                 Text(label).font(.system(size: 12, weight: .medium))
             }
-            .foregroundColor(.white.opacity(0.85))
+            .foregroundColor(Theme.detailText.opacity(0.85))
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.06)))
-            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+            .background(RoundedRectangle(cornerRadius: 7).fill(Theme.controlFill))
+            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Theme.controlBorder, lineWidth: 0.5))
         }
         .buttonStyle(.plain)
     }

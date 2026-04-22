@@ -15,6 +15,9 @@ struct HookDiagnosticsView: View {
     @State private var codexReport = HookHealthCheck.checkCodex()
     @State private var legacyCleanupMessage: String?
     @ObservedObject private var codexGate = CodexFeatureGate.shared
+    private var theme: ThemeResolver {
+        ThemeResolver(theme: NotchCustomizationStore.shared.customization.theme)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -22,7 +25,7 @@ struct HookDiagnosticsView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(L10n.hookDiagSubtitle)
                         .font(.system(size: 11))
-                        .foregroundColor(Theme.detailText.opacity(0.6))
+                        .foregroundColor(theme.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
 
                     agentCard(
@@ -51,7 +54,7 @@ struct HookDiagnosticsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(L10n.hookDiagCleanupLegacyHint)
                         .font(.system(size: 11))
-                        .foregroundColor(Theme.detailText.opacity(0.6))
+                        .foregroundColor(theme.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
 
                     HStack(spacing: 8) {
@@ -64,7 +67,7 @@ struct HookDiagnosticsView: View {
                         if let msg = legacyCleanupMessage {
                             Text(msg)
                                 .font(.system(size: 10))
-                                .foregroundColor(Theme.detailText.opacity(0.55))
+                                .foregroundColor(theme.mutedText)
                                 .transition(.opacity)
                         }
                     }
@@ -88,11 +91,11 @@ struct HookDiagnosticsView: View {
             HStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.system(size: 13))
-                    .foregroundColor(Theme.detailText.opacity(0.85))
+                    .foregroundColor(theme.secondaryText)
                     .frame(width: 16)
                 Text(name)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Theme.detailText.opacity(0.9))
+                    .foregroundColor(theme.primaryText)
                 Spacer()
                 statusBadge(for: report, isEnabled: isEnabled)
             }
@@ -100,7 +103,7 @@ struct HookDiagnosticsView: View {
             if !isEnabled {
                 Text(L10n.hookDiagCodexDisabledHint)
                     .font(.system(size: 10))
-                    .foregroundColor(Theme.detailText.opacity(0.5))
+                    .foregroundColor(theme.mutedText)
                     .padding(.leading, 24)
                     .fixedSize(horizontal: false, vertical: true)
             } else if !report.issues.isEmpty {
@@ -115,23 +118,23 @@ struct HookDiagnosticsView: View {
         .padding(.horizontal, 10)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white.opacity(0.04))
+                .fill(theme.overlay.opacity(0.14))
         )
     }
 
     private func statusBadge(for report: HookHealthReport, isEnabled: Bool) -> some View {
         let (text, color): (String, Color) = {
             if !isEnabled {
-                return (L10n.hookDiagDisabled, Color.gray)
+                return (L10n.hookDiagDisabled, theme.mutedText)
             }
             if report.isHealthy {
                 if report.notices.isEmpty {
-                    return (L10n.hookDiagHealthy, Color.green)
+                    return (L10n.hookDiagHealthy, theme.doneColor)
                 } else {
-                    return (L10n.hookDiagNoticeCount(report.notices.count), Color.yellow)
+                    return (L10n.hookDiagNoticeCount(report.notices.count), theme.needsYouColor)
                 }
             }
-            return (L10n.hookDiagErrorCount(report.errors.count), Color.red)
+            return (L10n.hookDiagErrorCount(report.errors.count), theme.errorColor)
         }()
 
         return HStack(spacing: 5) {
@@ -154,16 +157,16 @@ struct HookDiagnosticsView: View {
                 HStack(alignment: .top, spacing: 6) {
                     Image(systemName: issue.severity == .error ? "exclamationmark.triangle.fill" : "info.circle")
                         .font(.system(size: 9))
-                        .foregroundColor(issue.severity == .error ? .red.opacity(0.85) : .yellow.opacity(0.85))
+                        .foregroundColor(issue.severity == .error ? theme.errorColor : theme.needsYouColor)
                         .padding(.top, 2)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(localizedTitle(issue))
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(Theme.detailText.opacity(0.85))
+                            .foregroundColor(theme.primaryText)
                         if let detail = issueDetail(issue) {
                             Text(detail)
                                 .font(.system(size: 9, design: .monospaced))
-                                .foregroundColor(Theme.detailText.opacity(0.5))
+                                .foregroundColor(theme.mutedText)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                         }
@@ -205,18 +208,18 @@ struct HookDiagnosticsView: View {
                 Image(systemName: icon).font(.system(size: 9))
                 Text(label).font(.system(size: 10, weight: .semibold))
             }
-            .foregroundColor(prominent ? .black : (danger ? .red.opacity(0.85) : Theme.detailText.opacity(0.85)))
+            .foregroundColor(prominent ? theme.inverseText : (danger ? theme.errorColor : theme.primaryText))
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
             .background(
                 RoundedRectangle(cornerRadius: 6)
                     .fill(prominent
-                          ? Color(red: 0xCA/255, green: 0xFF/255, blue: 0x00/255)
-                          : Color.white.opacity(0.08))
+                          ? theme.doneColor
+                          : theme.overlay.opacity(0.18))
                     .overlay(
                         RoundedRectangle(cornerRadius: 6)
                             .strokeBorder(
-                                danger ? Color.red.opacity(0.3) : Theme.cardBorder,
+                                danger ? theme.errorColor.opacity(0.3) : theme.border.opacity(0.8),
                                 lineWidth: 0.5
                             )
                     )

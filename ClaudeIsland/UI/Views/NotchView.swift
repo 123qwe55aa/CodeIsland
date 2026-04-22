@@ -35,6 +35,7 @@ struct NotchView: View {
     @AppStorage("autoCollapseOnMouseLeave") private var autoCollapseOnMouseLeave: Bool = true
     @AppStorage("compactCollapsed") private var compactCollapsed: Bool = false
     @ObservedObject private var notchStore: NotchCustomizationStore = .shared
+    private var theme: ThemeResolver { ThemeResolver(theme: notchStore.customization.theme) }
 
     @Namespace private var activityNamespace
 
@@ -432,7 +433,7 @@ struct NotchView: View {
         HStack(spacing: 0) {
             HStack(spacing: 4) {
                 Circle()
-                    .fill(Color.white.opacity(0.3))
+                    .fill(theme.idleColor.opacity(theme.isRetroArcade ? 0.75 : 0.3))
                     .frame(width: 6, height: 6)
                 if notchStore.customization.showBuddy {
                     PixelCharacterView(state: .idle)
@@ -826,13 +827,13 @@ struct CollapsedNotchContent: View {
     private func dotColor(for phase: SessionPhase) -> Color {
         switch phase {
         case .processing, .compacting:
-            return TerminalColors.green
+            return theme.workingColor
         case .waitingForApproval, .waitingForQuestion:
-            return TerminalColors.amber
+            return theme.needsYouColor
         case .waitingForInput:
-            return TerminalColors.blue
+            return theme.doneColor
         case .idle, .ended:
-            return Color.white.opacity(0.25)
+            return theme.mutedText.opacity(theme.isRetroArcade ? 0.55 : 0.25)
         }
     }
 
@@ -861,6 +862,7 @@ struct CollapsedNotchContent: View {
     @ObservedObject private var buddyReader = BuddyReader.shared
     @AppStorage("usePixelCat") private var usePixelCat: Bool = false
     @ObservedObject private var notchStore: NotchCustomizationStore = .shared
+    private var theme: ThemeResolver { ThemeResolver(theme: notchStore.customization.theme) }
 
     // MARK: - Unattended Task Alert
 
@@ -895,9 +897,9 @@ struct CollapsedNotchContent: View {
     /// Override status dot color when unattended
     private var effectiveStatusDotColor: Color {
         if isUrgentlyUnattended {
-            return Color(red: 0.94, green: 0.27, blue: 0.27) // red
+            return theme.errorColor
         } else if isUnattended {
-            return Color(red: 1.0, green: 0.6, blue: 0.2)  // orange
+            return theme.needsYouColor
         }
         return statusDotColor
     }
@@ -911,12 +913,12 @@ struct CollapsedNotchContent: View {
     /// invisible on light-bg themes (sunset / sakura / retroArcade).
     private var statusDotColor: Color {
         switch mostUrgentState {
-        case .working: return Color(red: 0.4, green: 0.91, blue: 0.98) // cyan
-        case .needsYou: return Color(red: 0.96, green: 0.62, blue: 0.04) // amber
-        case .error: return Color(red: 0.94, green: 0.27, blue: 0.27) // red
-        case .done: return Color(red: 0.29, green: 0.87, blue: 0.5) // green
-        case .thinking: return Color(red: 0.7, green: 0.6, blue: 1.0) // purple
-        case .idle: return NotchPalette.for(notchStore.customization.theme).accent
+        case .working: return theme.workingColor
+        case .needsYou: return theme.needsYouColor
+        case .error: return theme.errorColor
+        case .done: return theme.doneColor
+        case .thinking: return theme.thinkingColor
+        case .idle: return theme.idleColor
         }
     }
 
@@ -1130,19 +1132,22 @@ struct CollapsedNotchContent: View {
 
     /// Status text gradient based on state
     private var statusGradient: LinearGradient {
+        if theme.isRetroArcade {
+            return LinearGradient(colors: [theme.primaryText, theme.primaryText], startPoint: .leading, endPoint: .trailing)
+        }
         switch mostUrgentState {
         case .working:
-            return LinearGradient(colors: [Color(red:0.3,green:0.9,blue:0.95), Color(red:0.2,green:0.95,blue:0.5)], startPoint: .leading, endPoint: .trailing)
+            return LinearGradient(colors: [theme.workingColor, theme.doneColor], startPoint: .leading, endPoint: .trailing)
         case .needsYou:
-            return LinearGradient(colors: [Color(red:1.0,green:0.75,blue:0.3), Color(red:1.0,green:0.55,blue:0.2)], startPoint: .leading, endPoint: .trailing)
+            return LinearGradient(colors: [theme.needsYouColor, theme.needsYouColor.opacity(0.8)], startPoint: .leading, endPoint: .trailing)
         case .error:
-            return LinearGradient(colors: [Color(red:1.0,green:0.4,blue:0.4), Color(red:0.9,green:0.2,blue:0.2)], startPoint: .leading, endPoint: .trailing)
+            return LinearGradient(colors: [theme.errorColor, theme.errorColor.opacity(0.8)], startPoint: .leading, endPoint: .trailing)
         case .thinking:
-            return LinearGradient(colors: [Color(red:0.7,green:0.6,blue:1.0), Color(red:0.5,green:0.8,blue:1.0)], startPoint: .leading, endPoint: .trailing)
+            return LinearGradient(colors: [theme.thinkingColor, theme.workingColor], startPoint: .leading, endPoint: .trailing)
         case .done:
-            return LinearGradient(colors: [Color(red:0.3,green:0.87,blue:0.5), Color(red:0.2,green:0.8,blue:0.7)], startPoint: .leading, endPoint: .trailing)
+            return LinearGradient(colors: [theme.doneColor, theme.doneColor.opacity(0.8)], startPoint: .leading, endPoint: .trailing)
         case .idle:
-            return LinearGradient(colors: [.white.opacity(0.5), .white.opacity(0.3)], startPoint: .leading, endPoint: .trailing)
+            return LinearGradient(colors: [theme.secondaryText, theme.secondaryText], startPoint: .leading, endPoint: .trailing)
         }
     }
 
@@ -1150,13 +1155,14 @@ struct CollapsedNotchContent: View {
     /// so the "×1" pill also reflects the active theme at rest, instead of
     /// a hardcoded 30%-white that vanishes on light-bg themes.
     private var badgeColor: Color {
+        if theme.isRetroArcade { return theme.primaryText }
         switch mostUrgentState {
-        case .needsYou: return TerminalColors.amber
-        case .error: return Color(red: 0.94, green: 0.27, blue: 0.27)
-        case .working: return TerminalColors.green
-        case .thinking: return Color(red: 0.65, green: 0.55, blue: 0.98)
-        case .done: return TerminalColors.blue
-        case .idle: return NotchPalette.for(notchStore.customization.theme).accent
+        case .needsYou: return theme.needsYouColor
+        case .error: return theme.errorColor
+        case .working: return theme.workingColor
+        case .thinking: return theme.thinkingColor
+        case .done: return theme.doneColor
+        case .idle: return theme.idleColor
         }
     }
 
