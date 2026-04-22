@@ -50,7 +50,13 @@ struct ClaudeStopVariantView: View {
             .padding(.horizontal, 14).padding(.vertical, 12)
         }
         .onAppear { controller.setPanelVisible(true) }
-        .onDisappear { controller.setPanelVisible(false) }
+        .onDisappear {
+            controller.setPanelVisible(false)
+            controller.setPanelHovered(false)
+        }
+        .onHover { hovering in
+            controller.setPanelHovered(hovering)
+        }
     }
 
     // MARK: - Header

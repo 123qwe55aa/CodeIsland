@@ -92,6 +92,20 @@ final class CompletionPanelController: NSObject, ObservableObject {
         if visible { restartTimer() } else { autoDismissTask?.cancel(); autoDismissTask = nil }
     }
 
+    /// Mouse-over on the panel pauses the 15s auto-dismiss timer. When the
+    /// mouse leaves, the timer restarts fresh. Keeps the panel open as long
+    /// as the user is actively interacting with it.
+    private(set) var isPanelHovered: Bool = false
+    func setPanelHovered(_ hovered: Bool) {
+        isPanelHovered = hovered
+        if hovered {
+            autoDismissTask?.cancel()
+            autoDismissTask = nil
+        } else {
+            restartTimer()
+        }
+    }
+
     // MARK: - Internals
 
     private func applyEnabledChange() {
@@ -320,6 +334,9 @@ final class CompletionPanelController: NSObject, ObservableObject {
         autoDismissTask?.cancel()
         guard let front = state.front else { return }
         guard state.isPanelVisible, state.sendError == nil else { return }
+        // Mouse currently over panel — skip scheduling; setPanelHovered(false)
+        // will call restartTimer again when the mouse leaves.
+        guard !isPanelHovered else { return }
         guard let seconds = front.variant.autoDismissSeconds else { return }
 
         let token = state.timerToken

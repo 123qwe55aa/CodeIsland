@@ -18,10 +18,11 @@ struct PixelCardVariant {
     static let blue = PixelCardVariant(
         gap: 10,
         maxDotSize: 2,
+        // Muted palette — soft warm-whites + faint cool tint, no saturated pops.
         colors: [
-            Color(hex: 0xE0F2FE),
-            Color(hex: 0x7DD3FC),
-            Color(hex: 0x0EA5E9)
+            Color.white.opacity(0.78),
+            Color(hex: 0xDCEBFE).opacity(0.55),
+            Color(hex: 0xB8C9DE).opacity(0.42)
         ],
         baseFill: Color(red: 0.05, green: 0.06, blue: 0.09)
     )
