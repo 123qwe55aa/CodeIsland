@@ -252,20 +252,37 @@ final class CompletionPanelController: NSObject, ObservableObject {
 
     private func resolveSummary(for session: SessionState) -> String {
         if session.codexTranscriptPath == nil {
-            // Claude session — read the transcript directly and find the last
-            // assistant TEXT message. We cannot use conversationInfo.lastMessage
-            // because ConversationParser may populate it from tool INPUT when
-            // the last transcript entry is a tool call (see ConversationParser
-            // line ~178), which surfaces as e.g. a raw bash command instead of
-            // the assistant's prose reply.
-            let messages = ConversationParser.shared.parseFullConversation(
-                sessionId: session.sessionId, cwd: session.cwd
-            )
-            if let lastAssistantText = messages.last(where: { $0.role == .assistant })?.textContent,
-               !lastAssistantText.isEmpty {
-                return lastAssistantText
+            // Claude session. conversationInfo.lastMessage may be tool INPUT
+            // when the last transcript entry is a tool call (ConversationParser
+            // line ~178) — that's why the panel showed a raw bash command.
+            // Seed with the (possibly wrong) fallback now so the panel pops
+            // immediately, then refresh asynchronously with the real last
+            // assistant text from the transcript via enqueue dedup.
+            let fallback = session.conversationInfo.lastMessage ?? ""
+            let stableId = session.stableId
+            let projectName = session.projectName
+            let sessionId = session.sessionId
+            let cwd = session.cwd
+            Task { [weak self] in
+                let messages = await ConversationParser.shared.parseFullConversation(
+                    sessionId: sessionId, cwd: cwd
+                )
+                guard let lastAssistantText = messages.last(where: { $0.role == .assistant })?.textContent,
+                      !lastAssistantText.isEmpty else { return }
+                let clean = SummaryExtraction.extract(lastAssistantText)
+                guard !clean.isEmpty else { return }
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    if self.state.front?.stableId == stableId
+                        || self.state.pending.contains(where: { $0.stableId == stableId }) {
+                        self.state.enqueue(CompletionEntry(
+                            stableId: stableId, projectName: projectName,
+                            variant: .claudeStop(summary: clean)
+                        ))
+                    }
+                }
             }
-            return session.conversationInfo.lastMessage ?? ""
+            return fallback
         }
         // Codex session — attempt async transcript parse, return fast fallback immediately
         let fallback = session.conversationInfo.lastMessage ?? ""
