@@ -11,6 +11,55 @@
 import Combine
 import Foundation
 
+private func normalizedPanelText(_ raw: String?) -> String {
+    SummaryExtraction.extract(raw)
+}
+
+private func latestUserPrompt(in session: SessionState) -> String {
+    for item in session.chatItems.reversed() {
+        if case .user(let text) = item.type {
+            let clean = normalizedPanelText(text)
+            if !clean.isEmpty { return clean }
+        }
+    }
+    if let latest = session.conversationInfo.latestUserMessage {
+        let clean = normalizedPanelText(latest)
+        if !clean.isEmpty { return clean }
+    }
+    return ""
+}
+
+private func latestAssistantResponse(in session: SessionState) -> String {
+    if let lastUserIndex = session.chatItems.lastIndex(where: {
+        if case .user = $0.type { return true }
+        return false
+    }) {
+        let afterLastUser = session.chatItems.index(after: lastUserIndex)
+        if afterLastUser < session.chatItems.endIndex {
+            for item in session.chatItems[afterLastUser...].reversed() {
+                if case .assistant(let text) = item.type {
+                    let clean = normalizedPanelText(text)
+                    if !clean.isEmpty { return clean }
+                }
+            }
+        }
+        return ""
+    }
+
+    for item in session.chatItems.reversed() {
+        if case .assistant(let text) = item.type {
+            let clean = normalizedPanelText(text)
+            if !clean.isEmpty { return clean }
+        }
+    }
+
+    if session.conversationInfo.lastMessageRole == "assistant" {
+        let clean = normalizedPanelText(session.conversationInfo.lastMessage)
+        if !clean.isEmpty { return clean }
+    }
+    return ""
+}
+
 @MainActor
 final class CompletionPanelController: NSObject, ObservableObject {
     static let shared = CompletionPanelController()
@@ -121,7 +170,10 @@ final class CompletionPanelController: NSObject, ObservableObject {
 
         let waitingNow = sessions.filter { $0.phase == .waitingForInput }
         let waitingIds = Set(waitingNow.map(\.stableId))
-        state.syncWithCurrentWaiting(waitingIds)
+        state.syncWithCurrentWaiting(waitingIds) { [weak self] entry in
+            guard let self else { return false }
+            return self.popTimePredicateHolds(for: entry)
+        }
 
         let activeIds = Set(sessions.map(\.stableId))
         previousActiveTaskIds = previousActiveTaskIds.filter { activeIds.contains($0.key) }
@@ -214,13 +266,7 @@ final class CompletionPanelController: NSObject, ObservableObject {
                 // time, which suppressed almost every panel. Users want the
                 // panel to surface EVEN when the terminal is front so they
                 // can respond without pulling focus off their terminal.
-                let rawSummary = resolveSummary(for: session)
-                let clean = SummaryExtraction.extract(rawSummary)
-                state.enqueue(CompletionEntry(
-                    stableId: session.stableId,
-                    projectName: session.projectName,
-                    variant: .claudeStop(summary: clean)
-                ))
+                state.enqueue(makeClaudeStopEntry(for: session))
             }
 
             if transitionedToApproval {
@@ -241,6 +287,8 @@ final class CompletionPanelController: NSObject, ObservableObject {
                 ))
             }
         }
+
+        refreshQueuedClaudeStopContent(using: sessions)
 
         refreshSnapshots(sessions)
         restartTimer()
@@ -279,61 +327,118 @@ final class CompletionPanelController: NSObject, ObservableObject {
         return SubagentLine(agentType: agentType, description: description, lastToolHint: lastToolHint)
     }
 
-    private func resolveSummary(for session: SessionState) -> String {
+    private func makeClaudeStopEntry(for session: SessionState) -> CompletionEntry {
+        CompletionEntry(
+            stableId: session.stableId,
+            projectName: session.projectName,
+            variant: .claudeStop(content: buildClaudeStopContent(for: session))
+        )
+    }
+
+    private func buildClaudeStopContent(for session: SessionState) -> ClaudeStopContent {
+        let prompt = latestUserPrompt(in: session)
+        let response = latestAssistantResponse(in: session)
+        DebugLogger.log(
+            "CP/content",
+            "session=\(session.stableId.prefix(8)) agent=\(session.agentTag) terminal=\(session.terminalTag) "
+                + "promptLen=\(prompt.count) responseLen=\(response.count) "
+                + "prompt=\(String(prompt.prefix(80))) response=\(String(response.prefix(120)))"
+        )
+        return ClaudeStopContent(
+            prompt: prompt,
+            response: response,
+            agentTag: session.agentTag,
+            terminalTag: session.terminalTag
+        )
+    }
+
+    private func hasQueuedClaudeStop(for stableId: String) -> Bool {
+        if let front = state.front,
+           front.stableId == stableId,
+           case .claudeStop = front.variant {
+            return true
+        }
+        return state.pending.contains {
+            guard $0.stableId == stableId else { return false }
+            if case .claudeStop = $0.variant { return true }
+            return false
+        }
+    }
+
+    private func refreshQueuedClaudeStopContent(using sessions: [SessionState]) {
+        for session in sessions where session.phase == .waitingForInput {
+            guard hasQueuedClaudeStop(for: session.stableId) else { continue }
+            state.enqueue(makeClaudeStopEntry(for: session))
+            scheduleTranscriptRefresh(for: session)
+        }
+    }
+
+    private func scheduleTranscriptRefresh(for session: SessionState) {
         if session.codexTranscriptPath == nil {
-            // Claude session. conversationInfo.lastMessage may be tool INPUT
-            // when the last transcript entry is a tool call (ConversationParser
-            // line ~178) — that's why the panel showed a raw bash command.
-            // Seed with the (possibly wrong) fallback now so the panel pops
-            // immediately, then refresh asynchronously with the real last
-            // assistant text from the transcript via enqueue dedup.
-            let fallback = session.conversationInfo.lastMessage ?? ""
             let stableId = session.stableId
-            let projectName = session.projectName
             let sessionId = session.sessionId
             let cwd = session.cwd
             Task { [weak self] in
-                let messages = await ConversationParser.shared.parseFullConversation(
-                    sessionId: sessionId, cwd: cwd
-                )
-                guard let lastAssistantText = messages.last(where: { $0.role == .assistant })?.textContent,
-                      !lastAssistantText.isEmpty else { return }
-                let clean = SummaryExtraction.extract(lastAssistantText)
-                guard !clean.isEmpty else { return }
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
-                    if self.state.front?.stableId == stableId
-                        || self.state.pending.contains(where: { $0.stableId == stableId }) {
-                        self.state.enqueue(CompletionEntry(
-                            stableId: stableId, projectName: projectName,
-                            variant: .claudeStop(summary: clean)
-                        ))
+                for attempt in 0..<5 {
+                    let messages = await ConversationParser.shared.parseFullConversation(sessionId: sessionId, cwd: cwd)
+                    if let lastAssistantText = messages.last(where: { $0.role == .assistant })?.textContent {
+                        let clean = normalizedPanelText(lastAssistantText)
+                        if !clean.isEmpty {
+                            await MainActor.run { [weak self] in
+                                guard let self, self.hasQueuedClaudeStop(for: stableId),
+                                      let refreshedSession = self.lastKnownSessions[stableId] else { return }
+                                let content = ClaudeStopContent(
+                                    prompt: latestUserPrompt(in: refreshedSession),
+                                    response: clean,
+                                    agentTag: refreshedSession.agentTag,
+                                    terminalTag: refreshedSession.terminalTag
+                                )
+                                self.state.enqueue(CompletionEntry(
+                                    stableId: stableId,
+                                    projectName: refreshedSession.projectName,
+                                    variant: .claudeStop(content: content)
+                                ))
+                            }
+                            return
+                        }
+                    }
+                    if attempt < 4 {
+                        try? await Task.sleep(nanoseconds: 300_000_000)
                     }
                 }
             }
-            return fallback
+            return
         }
-        // Codex session — attempt async transcript parse, return fast fallback immediately
-        let fallback = session.conversationInfo.lastMessage ?? ""
+
         let stableId = session.stableId
-        let projectName = session.projectName
         let path = session.codexTranscriptPath!
         Task { [weak self] in
-            let full = await CodexChatHistoryParser.shared.lastAssistantMessage(transcriptPath: path) ?? ""
-            let clean = SummaryExtraction.extract(full)
-            guard !clean.isEmpty else { return }
-            await MainActor.run { [weak self] in
-                guard let self else { return }
-                if self.state.front?.stableId == stableId
-                    || self.state.pending.contains(where: { $0.stableId == stableId }) {
-                    self.state.enqueue(CompletionEntry(
-                        stableId: stableId, projectName: projectName,
-                        variant: .claudeStop(summary: clean)
-                    ))
+            for attempt in 0..<5 {
+                let full = await CodexChatHistoryParser.shared.lastAssistantMessage(transcriptPath: path) ?? ""
+                let clean = normalizedPanelText(full)
+                if !clean.isEmpty {
+                    await MainActor.run { [weak self] in
+                        guard let self, self.hasQueuedClaudeStop(for: stableId),
+                              let refreshedSession = self.lastKnownSessions[stableId] else { return }
+                        let content = ClaudeStopContent(
+                            prompt: latestUserPrompt(in: refreshedSession),
+                            response: clean,
+                            agentTag: refreshedSession.agentTag,
+                            terminalTag: refreshedSession.terminalTag
+                        )
+                        self.state.enqueue(CompletionEntry(
+                            stableId: stableId,
+                            projectName: refreshedSession.projectName,
+                            variant: .claudeStop(content: content)
+                        ))
+                    }
+                    return
+                }
+                if attempt < 4 {
+                    try? await Task.sleep(nanoseconds: 400_000_000)
                 }
             }
         }
-        return fallback
     }
 
     private func popTimePredicateHolds(for entry: CompletionEntry) -> Bool {

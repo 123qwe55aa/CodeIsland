@@ -361,6 +361,8 @@ struct NotchView: View {
                 if case .completion(let current) = viewModel.contentType,
                    current.stableId == front.stableId,
                    current.id == front.id {
+                    DebugLogger.log("CP/onChange", "in-place refresh session=\(front.stableId.prefix(8)) variantId=\(front.id.uuidString.prefix(8))")
+                    viewModel.contentType = .completion(front)
                     return
                 }
                 viewModel.contentType = .completion(front)

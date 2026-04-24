@@ -10,10 +10,15 @@ import SwiftUI
 
 struct ClaudeStopVariantView: View {
     let entry: CompletionEntry
-    let summary: String
+    let content: ClaudeStopContent
     @ObservedObject private var controller = CompletionPanelController.shared
+    @State private var draftReply = ""
+    @FocusState private var isReplyFieldFocused: Bool
 
     private var phrases: [QuickReplyPhrase] { QuickReplyPhrases.current }
+    private var promptText: String { content.prompt.isEmpty ? entry.projectName : content.prompt }
+    private var responseText: String { content.response.isEmpty ? "…" : content.response }
+    private var terminalButtonLabel: String { L10n.qrGoToTerminalNamed(content.terminalTag) }
 
     // Gradient palette shared by title + summary + CTA glow
     private let accentGradient = LinearGradient(
@@ -38,16 +43,17 @@ struct ClaudeStopVariantView: View {
             // Pixel animation INSIDE the 600pt panel as a background layer.
             PixelCardBackground(variant: .blue, cornerRadius: 14)
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 header
-                summaryView
+                conversationPreview
+                inputRow
                 if let err = controller.state.sendError, err.stableId == entry.stableId {
                     errorRow(err.message)
                 }
-                phraseRow
-                terminalButtonRow
+                quickActionsSection
+                footerRow
             }
-            .padding(.horizontal, 14).padding(.vertical, 12)
+            .padding(.horizontal, 14).padding(.vertical, 11)
         }
         .onAppear { controller.setPanelVisible(true) }
         .onDisappear {
@@ -70,6 +76,8 @@ struct ClaudeStopVariantView: View {
             Text(entry.projectName)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(titleGradient)
+            metaBadge(content.agentTag, tint: Color(red: 0x83/255, green: 0xD8/255, blue: 0xFF/255))
+            metaBadge(content.terminalTag, tint: Color.white.opacity(0.82))
             Spacer()
             if controller.state.pendingCount > 0 {
                 pendingBadge
@@ -94,17 +102,114 @@ struct ClaudeStopVariantView: View {
             .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 0.5))
     }
 
-    // MARK: - Summary (3-line reserved height + gradient text)
+    private func metaBadge(_ text: String, tint: Color) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold, design: .rounded))
+            .foregroundColor(tint)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(
+                Capsule()
+                    .fill(tint.opacity(0.12))
+                    .overlay(Capsule().stroke(tint.opacity(0.22), lineWidth: 0.5))
+            )
+    }
 
-    private var summaryView: some View {
-        Text(summary.isEmpty ? "…" : summary)
-            .font(.system(size: 12.5, weight: .regular, design: .default))
-            .foregroundStyle(summaryGradient)
-            .lineLimit(3)
-            .truncationMode(.tail)
-            .multilineTextAlignment(.leading)
-            .lineSpacing(2)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+    // MARK: - Conversation preview
+
+    private var conversationPreview: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            messageRow(
+                speaker: L10n.you,
+                tint: .white.opacity(0.45),
+                text: promptText,
+                lineLimit: 1,
+                textFont: .system(size: 12, weight: .medium)
+            )
+
+            messageRow(
+                speaker: content.agentTag,
+                tint: Color(red: 0xCA/255, green: 0xFF/255, blue: 0x00/255).opacity(0.88),
+                text: responseText,
+                lineLimit: 3,
+                textFont: .system(size: 12.5, weight: .regular, design: .default)
+            )
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func messageRow(
+        speaker: String,
+        tint: Color,
+        text: String,
+        lineLimit: Int,
+        textFont: Font
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text("\(speaker)：")
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundColor(tint)
+            Text(text)
+                .font(textFont)
+                .foregroundStyle(summaryGradient)
+                .lineLimit(lineLimit)
+                .truncationMode(.tail)
+                .multilineTextAlignment(.leading)
+                .lineSpacing(1.5)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Direct input
+
+    private var inputRow: some View {
+        HStack(spacing: 8) {
+            TextField(L10n.qrReplyPlaceholder, text: $draftReply)
+                .textFieldStyle(.plain)
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundColor(.white.opacity(0.96))
+                .focused($isReplyFieldFocused)
+                .onSubmit { sendCurrentDraft() }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(inputBackground)
+
+            SendButton(
+                label: L10n.qrSend,
+                isEnabled: CompletionPanelInput.normalizedDraft(draftReply) != nil,
+                action: sendCurrentDraft
+            )
+        }
+    }
+
+    private var inputBackground: some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(
+                LinearGradient(
+                    colors: [
+                        Color(red: 0x27/255, green: 0x2E/255, blue: 0x3B/255).opacity(0.96),
+                        Color(red: 0x1D/255, green: 0x23/255, blue: 0x2E/255).opacity(0.98)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(
+                        isReplyFieldFocused
+                            ? Color(red: 0x83/255, green: 0xD8/255, blue: 0xFF/255).opacity(0.55)
+                            : Color.white.opacity(0.12),
+                        lineWidth: isReplyFieldFocused ? 0.9 : 0.5
+                    )
+            )
+            .shadow(
+                color: isReplyFieldFocused
+                    ? Color(red: 0x83/255, green: 0xD8/255, blue: 0xFF/255).opacity(0.22)
+                    : .clear,
+                radius: isReplyFieldFocused ? 8 : 0
+            )
     }
 
     // MARK: - Error row
@@ -121,7 +226,7 @@ struct ClaudeStopVariantView: View {
                 .foregroundColor(.white.opacity(0.88))
             Spacer()
             Button(action: jumpToTerminal) {
-                Text(L10n.qrGoToTerminal)
+                Text(terminalButtonLabel)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(.yellow)
             }
@@ -145,21 +250,52 @@ struct ClaudeStopVariantView: View {
 
     // MARK: - Phrase row
 
-    private var phraseRow: some View {
-        HStack(spacing: 7) {
+    private var quickActionsSection: some View {
+        ChipFlowLayout(spacing: 7) {
             ForEach(phrases) { phrase in
                 PhraseButton(text: phrase.text) { send(phrase.text) }
             }
-            Spacer()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - CTA row
 
-    private var terminalButtonRow: some View {
-        HStack {
-            Spacer()
-            PrimaryCTAButton(label: L10n.qrGoToTerminal, action: jumpToTerminal)
+    private var footerRow: some View {
+        HStack(spacing: 8) {
+            Button(action: acknowledge) {
+                Text(L10n.qrAcknowledge)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.9), Color.white.opacity(0.7)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0x6C/255, green: 0x9B/255, blue: 0xC9/255).opacity(0.28),
+                                        Color(red: 0x43/255, green: 0x58/255, blue: 0x7A/255).opacity(0.18)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color(red: 0x83/255, green: 0xD8/255, blue: 0xFF/255).opacity(0.28), lineWidth: 0.6)
+                            )
+                    )
+            }
+            .buttonStyle(.plain)
+            Spacer(minLength: 0)
+            PrimaryCTAButton(label: terminalButtonLabel, action: jumpToTerminal)
         }
     }
 
@@ -190,6 +326,11 @@ struct ClaudeStopVariantView: View {
 
     // MARK: - Actions
 
+    private func sendCurrentDraft() {
+        guard let normalized = CompletionPanelInput.normalizedDraft(draftReply) else { return }
+        send(normalized)
+    }
+
     private func send(_ text: String) {
         let stableId = entry.stableId
         Task {
@@ -212,8 +353,13 @@ struct ClaudeStopVariantView: View {
             )
             DebugLogger.log("CP/send", "result session=\(stableId.prefix(8)) ok=\(ok)")
             await MainActor.run {
-                if ok { controller.dismissFront(stableId: stableId) }
-                else  { controller.recordSendFailure(stableId: stableId, message: L10n.qrSendFailed) }
+                if ok {
+                    draftReply = ""
+                    controller.dismissFront(stableId: stableId)
+                } else {
+                    controller.recordSendFailure(stableId: stableId, message: L10n.qrSendFailed)
+                    isReplyFieldFocused = true
+                }
             }
         }
     }
@@ -225,6 +371,10 @@ struct ClaudeStopVariantView: View {
             _ = await TerminalJumper.shared.jump(to: session)
             await MainActor.run { controller.dismissFront(stableId: stableId) }
         }
+    }
+
+    private func acknowledge() {
+        controller.dismissFront(stableId: entry.stableId)
     }
 }
 
@@ -294,6 +444,54 @@ private struct PhraseButton: View {
         }, onRelease: {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { isPressed = false }
         })
+    }
+}
+
+private struct SendButton: View {
+    let label: String
+    let isEnabled: Bool
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundColor(isEnabled ? .black.opacity(0.82) : .white.opacity(0.4))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(
+                            isEnabled
+                                ? LinearGradient(
+                                    colors: [
+                                        Color(red: 0xE8/255, green: 0xFF/255, blue: 0x3E/255),
+                                        Color(red: 0xCA/255, green: 0xFF/255, blue: 0x00/255)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                                : LinearGradient(
+                                    colors: [Color.white.opacity(0.10), Color.white.opacity(0.05)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isEnabled ? Color.white.opacity(0.15) : Color.white.opacity(0.08), lineWidth: 0.5)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .scaleEffect(isHovering && isEnabled ? 1.03 : 1.0)
+        .onHover { hovering in
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+                isHovering = hovering
+            }
+        }
     }
 }
 

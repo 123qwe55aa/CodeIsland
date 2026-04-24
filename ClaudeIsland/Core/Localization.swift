@@ -201,7 +201,15 @@ enum L10n {
     // MARK: - Completion Panel — UI strings
     static var qrSendFailed: String { tr("Failed to send — terminal unavailable", "发送失败，终端不可用") }
     static var qrGoToTerminal: String { tr("Go to terminal", "前往终端") }
+    static func qrGoToTerminalNamed(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return qrGoToTerminal }
+        return tr("Go to terminal · \(trimmed)", "前往终端 · \(trimmed)")
+    }
+    static var qrAcknowledge: String { tr("Got it", "知道了") }
     static var qrClose: String { tr("Close", "关闭") }
+    static var qrReplyPlaceholder: String { tr("Reply directly…", "直接回复…") }
+    static var qrSend: String { tr("Send", "发送") }
     static func subagentDoneBadge(_ n: Int) -> String { tr("\(n) subagents done", "\(n) 个 subagent 完成") }
     static var pendingToolAllow: String { tr("Allow", "允许") }
     static var pendingToolDeny: String { tr("Deny", "拒绝") }

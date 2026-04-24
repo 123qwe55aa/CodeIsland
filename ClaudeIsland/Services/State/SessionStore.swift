@@ -204,6 +204,9 @@ actor SessionStore {
             session.tty = tty.replacingOccurrences(of: "/dev/", with: "")
         }
         session.lastActivity = Date()
+        if Self.eventAdvancesTurnNonce(event) {
+            session.currentTurnNonce &+= 1
+        }
 
         if event.status == "ended" {
             session.phase = .ended
@@ -248,13 +251,18 @@ actor SessionStore {
             // network-retry cascades (disconnect → API error → retry → API
             // error → …). Each retry produces a fresh processing →
             // waitingForInput transition and another Stop. Collapsing Stops
-            // within a 3 s window to the first one prevents the completion
-            // panel (and downstream consumers) from firing on every retry.
+            // for the same Claude work turn prevents the completion panel
+            // (and downstream consumers) from firing twice when Claude later
+            // emits a follow-up Stop for the hook's own return path.
             let now = Date()
-            if let prev = session.lastStopAt, now.timeIntervalSince(prev) < 3.0 {
-                DebugLogger.log("Store", "Stop deduped (Δ=\(String(format: "%.2f", now.timeIntervalSince(prev)))s) sid=\(sessionId.prefix(8))")
+            if session.lastCompletedTurnNonce == session.currentTurnNonce {
+                let delta = session.lastStopAt.map { now.timeIntervalSince($0) } ?? 0
+                DebugLogger.log("Store", "Stop deduped same-turn (Δ=\(String(format: "%.2f", delta))s) sid=\(sessionId.prefix(8)) nonce=\(session.currentTurnNonce)")
+            } else if let prev = session.lastStopAt, now.timeIntervalSince(prev) < 3.0 {
+                DebugLogger.log("Store", "Stop deduped short-window (Δ=\(String(format: "%.2f", now.timeIntervalSince(prev)))s) sid=\(sessionId.prefix(8))")
             } else {
                 session.lastStopAt = now
+                session.lastCompletedTurnNonce = session.currentTurnNonce
             }
         }
 
@@ -297,6 +305,15 @@ actor SessionStore {
             isInTmux: false,  // Will be updated
             phase: .idle
         )
+    }
+
+    private static func eventAdvancesTurnNonce(_ event: HookEvent) -> Bool {
+        switch event.event {
+        case "UserPromptSubmit", "PreToolUse", "PostToolUse":
+            return true
+        default:
+            return false
+        }
     }
 
     private func processToolTracking(event: HookEvent, session: inout SessionState) {
@@ -755,7 +772,7 @@ actor SessionStore {
                 }
             }
 
-            session.chatItems.sort { $0.timestamp < $1.timestamp }
+            sortChatItemsInDisplayOrder(&session.chatItems)
         }
 
         session.toolTracker.lastSyncTime = Date()
@@ -1191,10 +1208,12 @@ actor SessionStore {
 
         DebugLogger.log("HistLoad", "Added \(addedCount) items, total=\(session.chatItems.count)")
 
-        // Sort by timestamp
-        session.chatItems.sort { $0.timestamp < $1.timestamp }
+        // Preserve source order for same-timestamp items so the latest
+        // user/assistant turn does not get scrambled in quick panel summary.
+        sortChatItemsInDisplayOrder(&session.chatItems)
 
         sessions[sessionId] = session
+        publishState()
     }
 
     // MARK: - File Sync Scheduling
@@ -1271,6 +1290,15 @@ actor SessionStore {
     private func cancelPendingSync(sessionId: String) {
         pendingSyncs[sessionId]?.cancel()
         pendingSyncs.removeValue(forKey: sessionId)
+    }
+
+    private func sortChatItemsInDisplayOrder(_ items: inout [ChatHistoryItem]) {
+        items = items.enumerated().sorted { lhs, rhs in
+            if lhs.element.timestamp != rhs.element.timestamp {
+                return lhs.element.timestamp < rhs.element.timestamp
+            }
+            return lhs.offset < rhs.offset
+        }.map(\.element)
     }
 
     // MARK: - State Publishing

@@ -5,7 +5,7 @@ import Foundation
 //     ClaudeIsland/Core/CompletionPanelState.swift) ===
 
 enum PanelVariant: Equatable {
-    case claudeStop(summary: String)
+    case claudeStop(content: ClaudeStopContent)
     case subagentDone(subagents: [SubagentLine])
     case pendingTool(request: ToolApprovalRequest)
 
@@ -26,6 +26,13 @@ enum PanelVariant: Equatable {
     var autoDismissSeconds: TimeInterval? {
         isSticky ? nil : 15
     }
+}
+
+struct ClaudeStopContent: Equatable {
+    let prompt: String
+    let response: String
+    let agentTag: String
+    let terminalTag: String
 }
 
 struct SubagentLine: Equatable {
@@ -128,11 +135,16 @@ struct CompletionPanelState: Equatable {
         sendError = ErrorState(stableId: stableId, message: message)
     }
 
-    mutating func syncWithCurrentWaiting(_ active: Set<String>) {
-        pending.removeAll { !active.contains($0.stableId) }
-        if let f = front, !active.contains(f.stableId) {
+    mutating func syncWithCurrentWaiting(
+        _ active: Set<String>,
+        shouldRetain: (CompletionEntry) -> Bool = { _ in true }
+    ) {
+        pending.removeAll { !active.contains($0.stableId) || !shouldRetain($0) }
+        guard let current = front else { return }
+        guard active.contains(current.stableId), shouldRetain(current) else {
             if pending.isEmpty { front = nil } else { front = pending.removeFirst(); bumpTimer() }
             sendError = nil
+            return
         }
     }
 
@@ -155,7 +167,11 @@ func check(_ cond: @autoclosure () -> Bool, _ desc: String, line: UInt = #line) 
 }
 
 func claudeEntry(_ id: String, summary: String = "s") -> CompletionEntry {
-    .init(stableId: id, projectName: "Proj", variant: .claudeStop(summary: summary))
+    .init(
+        stableId: id,
+        projectName: "Proj",
+        variant: .claudeStop(content: .init(prompt: "q", response: summary, agentTag: "Claude", terminalTag: "cmux"))
+    )
 }
 func subagentEntry(_ id: String) -> CompletionEntry {
     .init(stableId: id, projectName: "Proj", variant: .subagentDone(subagents: []))
@@ -176,19 +192,28 @@ s.enqueue(claudeEntry("A"))
 check(s.front?.stableId == "A", "front=A")
 check(s.timerToken == tok0 &+ 1, "timer bumped")
 
-print("=== T3: second enqueue different session lower/equal priority → pending, no timer bump ===")
+print("=== T3: claudeStop preserves FIFO order across sessions ===")
 let tok1 = s.timerToken
 s.enqueue(claudeEntry("B"))
-check(s.front?.stableId == "A", "front still A")
-check(s.pendingCount == 1, "B in pending")
-check(s.timerToken == tok1, "timer NOT bumped")
+check(s.front?.stableId == "A", "older A stays front")
+check(s.pending.map(\.stableId) == ["B"], "B queued behind A")
+check(s.timerToken == tok1, "timer not bumped for equal-priority queueing")
 
 print("=== T4: same-session variant update → replace front, preserve id, NO timer bump ===")
+s = CompletionPanelState()
+s.enqueue(claudeEntry("A"))
 let aId = s.front?.id
 let tok2 = s.timerToken
-s.enqueue(CompletionEntry(stableId: "A", projectName: "Proj", variant: .claudeStop(summary: "updated")))
+s.enqueue(CompletionEntry(
+    stableId: "A",
+    projectName: "Proj",
+    variant: .claudeStop(content: .init(prompt: "new q", response: "updated", agentTag: "Claude", terminalTag: "cmux"))
+))
 check(s.front?.stableId == "A", "still A")
-if case .claudeStop(let sum) = s.front!.variant { check(sum == "updated", "summary updated") }
+if case .claudeStop(let content) = s.front!.variant {
+    check(content.response == "updated", "summary updated")
+    check(content.prompt == "new q", "prompt updated")
+}
 else { check(false, "variant still claudeStop") }
 check(s.front?.id == aId, "id preserved (no transition)")
 check(s.timerToken == tok2, "timer NOT bumped")
@@ -212,23 +237,30 @@ check(s.front?.stableId == "A", "A still front")
 check(s.pendingCount == 1, "B in pending")
 check(s.timerToken == tok4, "no timer bump")
 
-print("=== T7: same-priority different session → append, no preempt ===")
+print("=== T7: claudeStops remain FIFO within same priority ===")
 s = CompletionPanelState()
 s.enqueue(claudeEntry("A"))
 s.enqueue(claudeEntry("B"))
-s.enqueue(claudeEntry("C"))
-check(s.front?.stableId == "A", "A still front")
-check(s.pendingCount == 2, "B+C in pending")
-check(s.pending[0].stableId == "B" && s.pending[1].stableId == "C", "FIFO within same priority")
+check(s.front?.stableId == "A", "A remains front")
+check(s.pending.map(\.stableId) == ["B"], "B queued behind A")
 
-print("=== T8: priority ordering in pending ===")
+print("=== T8: all queued claudeStops are retained behind higher-priority front in completion order ===")
+s = CompletionPanelState()
+s.enqueue(pendingEntry("P"))
+s.enqueue(claudeEntry("A"))
+s.enqueue(claudeEntry("B"))
+s.enqueue(claudeEntry("C"))
+check(s.front?.stableId == "P", "pendingTool stays front")
+check(s.pending.map(\.stableId) == ["A", "B", "C"], "all claudeStops retained in FIFO order")
+
+print("=== T9: priority ordering in pending ===")
 s = CompletionPanelState()
 s.enqueue(pendingEntry("X"))
 s.enqueue(subagentEntry("S"))
 s.enqueue(claudeEntry("C"))
 check(s.pending[0].stableId == "C" && s.pending[1].stableId == "S", "pending sorted high-to-low")
 
-print("=== T9: dismissFront promotes highest-priority pending + bumps timer ===")
+print("=== T10: dismissFront promotes highest-priority pending + bumps timer ===")
 s = CompletionPanelState()
 s.enqueue(claudeEntry("A"))
 s.enqueue(subagentEntry("S"))
@@ -239,7 +271,7 @@ check(s.front?.stableId == "A", "A promoted (priority 20 > 10)")
 check(s.pendingCount == 1 && s.pending.first?.stableId == "S", "S remains in pending")
 check(s.timerToken == tok5 &+ 1, "timer bumped on promotion")
 
-print("=== T10: dismissFront last → front nil, no bump ===")
+print("=== T11: dismissFront last → front nil, no bump ===")
 s = CompletionPanelState()
 s.enqueue(claudeEntry("A"))
 let tok6 = s.timerToken
@@ -247,7 +279,7 @@ s.dismissFront(stableId: "A")
 check(s.front == nil, "front nil")
 check(s.timerToken == tok6, "no bump on empty promotion")
 
-print("=== T11: dismissFront wrong id is no-op ===")
+print("=== T12: dismissFront wrong id is no-op ===")
 s = CompletionPanelState()
 s.enqueue(claudeEntry("A"))
 let tok7 = s.timerToken
@@ -255,7 +287,7 @@ s.dismissFront(stableId: "Z")
 check(s.front?.stableId == "A", "unchanged")
 check(s.timerToken == tok7, "no bump")
 
-print("=== T12: recordSendFailure sets error, no timer bump ===")
+print("=== T13: recordSendFailure sets error, no timer bump ===")
 s = CompletionPanelState()
 s.enqueue(claudeEntry("A"))
 let tok8 = s.timerToken
@@ -263,15 +295,15 @@ s.recordSendFailure(stableId: "A", message: "fail")
 check(s.sendError?.stableId == "A", "error set")
 check(s.timerToken == tok8, "no bump on failure")
 
-print("=== T13: recordSendFailure on wrong id = no-op ===")
+print("=== T14: recordSendFailure on wrong id = no-op ===")
 s.recordSendFailure(stableId: "Z", message: "fail2")
 check(s.sendError?.message == "fail", "error unchanged")
 
-print("=== T14: dismissFront clears sendError ===")
+print("=== T15: dismissFront clears sendError ===")
 s.dismissFront(stableId: "A")
 check(s.sendError == nil, "error cleared")
 
-print("=== T15: flush(enabled=false) clears everything ===")
+print("=== T16: flush(enabled=false) clears everything ===")
 s = CompletionPanelState()
 s.enqueue(claudeEntry("A"))
 s.enqueue(claudeEntry("B"))
@@ -279,44 +311,63 @@ s.recordSendFailure(stableId: "A", message: "x")
 s.flush(enabled: false)
 check(s.front == nil && s.pendingCount == 0 && s.sendError == nil, "all cleared")
 
-print("=== T16: flush(enabled=true) on populated state is no-op ===")
+print("=== T17: flush(enabled=true) on populated state is no-op ===")
 s = CompletionPanelState()
 s.enqueue(claudeEntry("A"))
 s.flush(enabled: true)
 check(s.front?.stableId == "A", "front preserved")
 
-print("=== T17: syncWithCurrentWaiting drops dead front + pending, promotes next ===")
+print("=== T18: syncWithCurrentWaiting drops dead front + pending, promotes next ===")
+s = CompletionPanelState()
+s.enqueue(pendingEntry("P"))
+s.enqueue(claudeEntry("A"))
+s.enqueue(claudeEntry("B"))
+s.syncWithCurrentWaiting(Set(["B"]))
+check(s.front?.stableId == "B", "B promoted (A dead)")
+check(s.pendingCount == 0, "stale entries dropped")
+
+print("=== T19: dismissFront advances claudeStops in completion order ===")
 s = CompletionPanelState()
 s.enqueue(claudeEntry("A"))
 s.enqueue(claudeEntry("B"))
 s.enqueue(claudeEntry("C"))
-s.syncWithCurrentWaiting(Set(["B"]))
-check(s.front?.stableId == "B", "B promoted (A dead)")
-check(s.pendingCount == 0, "C also dead")
+s.dismissFront(stableId: "A")
+check(s.front?.stableId == "B", "B promoted after A")
+check(s.pending.map(\.stableId) == ["C"], "C remains queued")
 
-print("=== T18: syncWithCurrentWaiting(empty) clears all ===")
+print("=== T20: syncWithCurrentWaiting(empty) clears all ===")
 s = CompletionPanelState()
 s.enqueue(claudeEntry("A"))
 s.enqueue(claudeEntry("B"))
 s.syncWithCurrentWaiting(Set())
 check(s.front == nil && s.pendingCount == 0, "all cleared")
 
-print("=== T19: dedup in pending — same stableId replaces in place ===")
+print("=== T21: syncWithCurrentWaiting drops entries rejected by retain predicate ===")
 s = CompletionPanelState()
-s.enqueue(claudeEntry("A"))
+s.enqueue(pendingEntry("P"))
+s.enqueue(claudeEntry("B"))
+s.enqueue(subagentEntry("S"))
+s.syncWithCurrentWaiting(Set(["P", "B", "S"]), shouldRetain: { $0.stableId == "B" })
+check(s.front?.stableId == "B", "B retained")
+check(s.pendingCount == 0, "other entries dropped by predicate")
+
+print("=== T22: dedup in pending — same stableId replaces in place ===")
+s = CompletionPanelState()
+s.enqueue(pendingEntry("P"))
 s.enqueue(claudeEntry("B", summary: "old"))
 s.enqueue(claudeEntry("B", summary: "new"))
 check(s.pendingCount == 1, "not duplicated")
-if case .claudeStop(let sum) = s.pending.first!.variant { check(sum == "new", "summary updated") }
+if case .claudeStop(let content) = s.pending.first!.variant { check(content.response == "new", "summary updated") }
+else { check(false, "variant still claudeStop") }
 
-print("=== T20: PanelVariant priority ordering ===")
+print("=== T23: PanelVariant priority ordering ===")
 check(PanelVariant.pendingTool(request: .init(toolName:"x", argumentsSummary:"", riskLevel:.low)).priority == 30, "pendingTool=30")
-check(PanelVariant.claudeStop(summary: "").priority == 20, "claudeStop=20")
+check(PanelVariant.claudeStop(content: .init(prompt: "", response: "", agentTag: "", terminalTag: "")).priority == 20, "claudeStop=20")
 check(PanelVariant.subagentDone(subagents: []).priority == 10, "subagentDone=10")
 
-print("=== T21: PanelVariant.isSticky ===")
+print("=== T24: PanelVariant.isSticky ===")
 check(PanelVariant.subagentDone(subagents: []).isSticky, "subagentDone sticky")
-check(!PanelVariant.claudeStop(summary: "").isSticky, "claudeStop NOT sticky")
+check(!PanelVariant.claudeStop(content: .init(prompt: "", response: "", agentTag: "", terminalTag: "")).isSticky, "claudeStop NOT sticky")
 check(!PanelVariant.pendingTool(request: .init(toolName:"x", argumentsSummary:"", riskLevel:.low)).isSticky, "pendingTool NOT sticky")
 
 print("\n\(passed) passed, \(failed) failed")

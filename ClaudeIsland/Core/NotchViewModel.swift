@@ -167,7 +167,7 @@ class NotchViewModel: ObservableObject {
         case .completion(let entry):
             switch entry.variant {
             case .claudeStop:
-                return CGSize(width: min(screenRect.width * 0.5, 600), height: 200)
+                return CGSize(width: min(screenRect.width * 0.5, 600), height: 214)
             case .subagentDone(let subagents):
                 let rowHeight: CGFloat = 28
                 let padding: CGFloat = 120

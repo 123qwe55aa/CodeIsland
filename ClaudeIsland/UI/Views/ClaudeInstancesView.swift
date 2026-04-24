@@ -586,6 +586,14 @@ struct InstanceRow: View {
         return theme.terminalBadgeText
     }
 
+    private var agentBadgeFill: Color {
+        theme.isRetroArcade ? theme.agentBadgeFill : agentTagColor.opacity(0.12)
+    }
+
+    private var terminalBadgeFill: Color {
+        theme.isRetroArcade ? theme.terminalBadgeFill : terminalTagColor.opacity(0.12)
+    }
+
     /// Accent color based on phase (used for status dot)
     private var accentColor: Color {
         if theme.isRetroArcade { return theme.primaryText }
@@ -704,9 +712,11 @@ struct InstanceRow: View {
                             .notchFont(titleFontSize, weight: isActive ? .semibold : .medium)
                             .foregroundColor(theme.primaryText)
                             .opacity(isActive ? 0.95 : 0.85)
-                            .lineLimit(isActive ? 2 : 1)
+                            .lineLimit(1)
 
                         Spacer(minLength: 0)
+
+                        sessionIdentityCluster
 
                         // Subagent badge (if active)
                         if session.subagentState.hasActiveSubagent {
@@ -736,20 +746,6 @@ struct InstanceRow: View {
                             .foregroundColor(isActive ? accentColor.opacity(theme.isRetroArcade ? 1.0 : 0.7) : theme.secondaryText)
                             .opacity(isActive ? 1.0 : 0.3)
 
-                        // Terminal jump button — hidden for ended sessions
-                        if !isEnded {
-                            Image(systemName: "terminal")
-                                .notchFont(10)
-                                .foregroundColor(theme.doneColor.opacity(0.8))
-                                .frame(width: 20, height: 20)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(theme.doneColor.opacity(0.12))
-                                )
-                                .contentShape(Rectangle())
-                                .onTapGesture { onFocus() }
-                        }
-
                         // Delete button (always visible so users can dismiss stuck sessions)
                         Image(systemName: "xmark")
                             .notchFont(8, weight: .medium)
@@ -757,30 +753,6 @@ struct InstanceRow: View {
                             .frame(width: 16, height: 16)
                             .contentShape(Rectangle())
                             .onTapGesture { onArchive() }
-                    }
-
-                    // Session identity tags live on their own line so both stay
-                    // visible even when the title is long.
-                    HStack(spacing: 6) {
-                        Text(session.agentTag)
-                            .notchFont(8, weight: .semibold)
-                            .foregroundColor(agentTagColor)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule().fill(agentTagColor.opacity(0.12))
-                            )
-
-                        Text(session.terminalTag)
-                            .notchFont(8, weight: .semibold)
-                            .foregroundColor(terminalTagColor)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule().fill(terminalTagColor.opacity(0.12))
-                            )
-
-                        Spacer(minLength: 0)
                     }
 
                     // Subtitle
@@ -906,6 +878,53 @@ struct InstanceRow: View {
         }
         .onHover { isHovered = $0 }
         .opacity(isEnded ? 0.4 : 1.0)
+    }
+
+    @ViewBuilder
+    private var sessionIdentityCluster: some View {
+        HStack(spacing: 6) {
+            identityChip(
+                symbol: session.agentIconSymbolName,
+                label: session.agentTag,
+                foreground: agentTagColor,
+                background: agentBadgeFill,
+                action: nil
+            )
+
+            identityChip(
+                symbol: session.terminalIconSymbolName,
+                label: session.isGraphicalTerminalSurface ? nil : session.terminalTag,
+                foreground: terminalTagColor,
+                background: terminalBadgeFill,
+                action: isEnded ? nil : onFocus
+            )
+        }
+    }
+
+    private func identityChip(
+        symbol: String,
+        label: String?,
+        foreground: Color,
+        background: Color,
+        action: (() -> Void)?
+    ) -> some View {
+        HStack(spacing: label == nil ? 0 : 4) {
+            Image(systemName: symbol)
+                .notchFont(8, weight: .semibold)
+            if let label, !label.isEmpty {
+                Text(label)
+                    .notchFont(8, weight: .semibold)
+                    .lineLimit(1)
+            }
+        }
+        .foregroundColor(foreground)
+        .padding(.horizontal, label == nil ? 6 : 7)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(background))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            action?()
+        }
     }
 
     // MARK: - AskUserQuestion Response

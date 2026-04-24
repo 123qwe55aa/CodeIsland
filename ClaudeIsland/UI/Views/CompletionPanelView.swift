@@ -12,8 +12,8 @@ struct CompletionPanelView: View {
 
     var body: some View {
         switch entry.variant {
-        case .claudeStop(let summary):
-            ClaudeStopVariantView(entry: entry, summary: summary)
+        case .claudeStop(let content):
+            ClaudeStopVariantView(entry: entry, content: content)
         case .subagentDone(let subagents):
             SubagentDoneVariantView(entry: entry, subagents: subagents)
         case .pendingTool(let request):

@@ -14,7 +14,7 @@
 import Foundation
 
 enum PanelVariant: Equatable {
-    case claudeStop(summary: String)
+    case claudeStop(content: ClaudeStopContent)
     case subagentDone(subagents: [SubagentLine])
     case pendingTool(request: ToolApprovalRequest)
 
@@ -35,6 +35,13 @@ enum PanelVariant: Equatable {
     var autoDismissSeconds: TimeInterval? {
         isSticky ? nil : 15
     }
+}
+
+struct ClaudeStopContent: Equatable {
+    let prompt: String
+    let response: String
+    let agentTag: String
+    let terminalTag: String
 }
 
 struct SubagentLine: Equatable {
@@ -137,11 +144,22 @@ struct CompletionPanelState: Equatable {
         sendError = ErrorState(stableId: stableId, message: message)
     }
 
-    mutating func syncWithCurrentWaiting(_ active: Set<String>) {
-        pending.removeAll { !active.contains($0.stableId) }
-        if let f = front, !active.contains(f.stableId) {
-            if pending.isEmpty { front = nil } else { front = pending.removeFirst(); bumpTimer() }
+    mutating func syncWithCurrentWaiting(
+        _ active: Set<String>,
+        shouldRetain: (CompletionEntry) -> Bool = { _ in true }
+    ) {
+        pending.removeAll { !active.contains($0.stableId) || !shouldRetain($0) }
+
+        guard let current = front else { return }
+        guard active.contains(current.stableId), shouldRetain(current) else {
+            if pending.isEmpty {
+                front = nil
+            } else {
+                front = pending.removeFirst()
+                bumpTimer()
+            }
             sendError = nil
+            return
         }
     }
 

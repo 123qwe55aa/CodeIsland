@@ -73,6 +73,19 @@ struct SubagentDoneVariantView: View {
 
     private var terminalButtonRow: some View {
         HStack {
+            Button(L10n.qrAcknowledge) { controller.dismissFront(stableId: entry.stableId) }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .semibold))
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(Color.white.opacity(0.08))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                        )
+                )
+                .foregroundColor(.white.opacity(0.9))
             Spacer()
             Button(L10n.qrGoToTerminal) { jumpToTerminal() }
                 .buttonStyle(.plain).font(.system(size: 11, weight: .semibold))

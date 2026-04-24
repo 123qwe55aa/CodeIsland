@@ -77,6 +77,11 @@ struct SessionState: Equatable, Identifiable, Sendable {
     /// session is already in waitingForInput before the true Stop hook
     /// arrives, which phase-diff detection can't distinguish.
     var lastStopAt: Date?
+    /// Monotonic token for the current Claude work turn. Advances when the
+    /// user submits a prompt or the turn produces tool activity.
+    var currentTurnNonce: Int
+    /// The turn nonce that already emitted a completion Stop.
+    var lastCompletedTurnNonce: Int?
 
     // MARK: - Identifiable
 
@@ -119,6 +124,8 @@ struct SessionState: Equatable, Identifiable, Sendable {
         self.needsClearReconciliation = needsClearReconciliation
         self.lastActivity = lastActivity
         self.createdAt = createdAt
+        self.currentTurnNonce = 0
+        self.lastCompletedTurnNonce = nil
     }
 
     // MARK: - Derived Properties
@@ -155,9 +162,43 @@ struct SessionState: Equatable, Identifiable, Sendable {
         return app == "codex"
     }
 
+    /// Whether this session is backed by a GPT/OpenAI GUI surface.
+    var isGPTSession: Bool {
+        guard !isCodexSession else { return false }
+        let app = terminalApp?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        return app.contains("chatgpt") || app == "gpt" || app.contains("openai")
+    }
+
     /// Human-facing agent badge shown in the sessions list.
     var agentTag: String {
-        isCodexSession ? "Codex" : "Claude"
+        if isCodexSession { return "Codex" }
+        if isGPTSession { return "GPT" }
+        return "Claude"
+    }
+
+    /// SF Symbol used to visually distinguish the agent surface.
+    var agentIconSymbolName: String {
+        if isCodexSession { return "chevron.left.forwardslash.chevron.right" }
+        if isGPTSession { return "sparkles" }
+        return "sun.max"
+    }
+
+    /// Whether the session is using a GUI app surface rather than a terminal multiplexer.
+    var isGraphicalTerminalSurface: Bool {
+        guard cmuxWorkspaceId?.isEmpty != false,
+              cmuxSurfaceId?.isEmpty != false,
+              !isInTmux else { return false }
+        let app = terminalApp?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        return app == "codex" || app.contains("chatgpt") || app == "gpt" || app.contains("openai")
+    }
+
+    /// SF Symbol used for the terminal/backend indicator in the sessions list.
+    var terminalIconSymbolName: String {
+        let tag = terminalTag.lowercased()
+        if isGraphicalTerminalSurface { return "macwindow" }
+        if tag.contains("cmux") { return "square.split.2x1" }
+        if tag.contains("tmux") { return "square.grid.2x2" }
+        return "terminal"
     }
 
     /// Human-facing terminal badge shown in the sessions list.
@@ -174,7 +215,10 @@ struct SessionState: Equatable, Identifiable, Sendable {
         if let app = terminalApp?.trimmingCharacters(in: .whitespacesAndNewlines),
            !app.isEmpty {
             let lower = app.lowercased()
-            if lower != "codex" && lower != "claude" {
+            if lower == "codex" || lower.contains("chatgpt") || lower == "gpt" || lower.contains("openai") {
+                return "Terminal"
+            }
+            if lower != "claude" {
                 return app
             }
         }

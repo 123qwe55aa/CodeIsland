@@ -31,10 +31,10 @@ final class CompletionPanelStateTests: XCTestCase {
         s.enqueue(claudeEntry("A"))
         XCTAssertEqual(s.front?.stableId, "A"); XCTAssertEqual(s.timerToken, t &+ 1)
     }
-    func testSecondEnqueueAppendsPending() {
+    func testSecondEnqueueReplacesOlderClaudeStop() {
         var s = CompletionPanelState(); s.enqueue(claudeEntry("A"))
         let t = s.timerToken; s.enqueue(claudeEntry("B"))
-        XCTAssertEqual(s.front?.stableId, "A"); XCTAssertEqual(s.pendingCount, 1); XCTAssertEqual(s.timerToken, t)
+        XCTAssertEqual(s.front?.stableId, "B"); XCTAssertEqual(s.pendingCount, 0); XCTAssertEqual(s.timerToken, t &+ 1)
     }
     func testSameSessionUpdatePreservesId() {
         var s = CompletionPanelState(); s.enqueue(claudeEntry("A")); let id = s.front?.id; let t = s.timerToken
@@ -52,9 +52,19 @@ final class CompletionPanelStateTests: XCTestCase {
         s.enqueue(subagentEntry("B"))
         XCTAssertEqual(s.front?.stableId, "A"); XCTAssertEqual(s.timerToken, t)
     }
-    func testSamePriorityFIFO() {
+    func testClaudeStopPreemptsOlderClaudeStopAcrossSessions() {
+        var s = CompletionPanelState(); s.enqueue(claudeEntry("A")); let t = s.timerToken
+        s.enqueue(claudeEntry("B"))
+        XCTAssertEqual(s.front?.stableId, "B"); XCTAssertEqual(s.pendingCount, 0); XCTAssertEqual(s.timerToken, t &+ 1)
+    }
+    func testOnlyLatestClaudeStopRemainsPending() {
+        var s = CompletionPanelState(); s.enqueue(pendingEntry("P"))
+        s.enqueue(claudeEntry("A")); s.enqueue(claudeEntry("B")); s.enqueue(claudeEntry("C"))
+        XCTAssertEqual(s.pending.map(\.stableId), ["C"])
+    }
+    func testNonClaudeStopsStillFIFOWithinSamePriorityBucket() {
         var s = CompletionPanelState(); s.enqueue(claudeEntry("A")); s.enqueue(claudeEntry("B")); s.enqueue(claudeEntry("C"))
-        XCTAssertEqual(s.pending.map(\.stableId), ["B", "C"])
+        XCTAssertEqual(s.front?.stableId, "C")
     }
     func testPendingPriorityOrdering() {
         var s = CompletionPanelState(); s.enqueue(pendingEntry("X")); s.enqueue(subagentEntry("S")); s.enqueue(claudeEntry("C"))
@@ -96,15 +106,20 @@ final class CompletionPanelStateTests: XCTestCase {
         XCTAssertEqual(s.front?.stableId, "A")
     }
     func testSyncDropsDeadFrontAndPending() {
-        var s = CompletionPanelState(); s.enqueue(claudeEntry("A")); s.enqueue(claudeEntry("B")); s.enqueue(claudeEntry("C"))
+        var s = CompletionPanelState(); s.enqueue(pendingEntry("P")); s.enqueue(claudeEntry("A")); s.enqueue(claudeEntry("B"))
         s.syncWithCurrentWaiting(["B"]); XCTAssertEqual(s.front?.stableId, "B"); XCTAssertEqual(s.pendingCount, 0)
+    }
+    func testSyncDropsEntriesRejectedByRetainPredicate() {
+        var s = CompletionPanelState(); s.enqueue(pendingEntry("P")); s.enqueue(claudeEntry("B")); s.enqueue(subagentEntry("S"))
+        s.syncWithCurrentWaiting(["P", "B", "S"], shouldRetain: { $0.stableId == "B" })
+        XCTAssertEqual(s.front?.stableId, "B"); XCTAssertEqual(s.pendingCount, 0)
     }
     func testSyncEmptyClearsAll() {
         var s = CompletionPanelState(); s.enqueue(claudeEntry("A")); s.enqueue(claudeEntry("B"))
         s.syncWithCurrentWaiting([]); XCTAssertNil(s.front); XCTAssertEqual(s.pendingCount, 0)
     }
     func testDedupInPending() {
-        var s = CompletionPanelState(); s.enqueue(claudeEntry("A"))
+        var s = CompletionPanelState(); s.enqueue(pendingEntry("P"))
         s.enqueue(claudeEntry("B", summary: "old")); s.enqueue(claudeEntry("B", summary: "new"))
         XCTAssertEqual(s.pendingCount, 1)
         if case .claudeStop(let sum) = s.pending.first!.variant { XCTAssertEqual(sum, "new") } else { XCTFail() }
