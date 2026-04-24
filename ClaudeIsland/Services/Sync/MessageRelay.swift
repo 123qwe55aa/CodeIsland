@@ -28,6 +28,29 @@ final class MessageRelay {
     /// Used to detect tool status mutations (running→success) that need re-sync.
     private var syncedItemContents: [String: [String: String]] = [:]
 
+    /// Tool item IDs (per session) whose final terminal content has NOT yet
+    /// been sent to the server. Populated when we sync a new tool in a
+    /// non-terminal state, or when an existing entry's status flips to
+    /// terminal (so we know to capture its final content next tick). An
+    /// item is removed from this set once we've re-sent its terminal
+    /// content — future ticks then skip serializing it entirely.
+    ///
+    /// Why: without this, every `syncNewMessages` tick re-serializes ALL
+    /// already-synced tool items to detect in-place mutations. With 500+
+    /// tools in a long session that's 500 JSON encodes per tick, even
+    /// though 99 % of those tools are in a terminal state that can't
+    /// change anymore. This restricts serialization to the handful of
+    /// tools actually still mutating.
+    private var pendingToolItems: [String: Set<String>] = [:]
+
+    /// Returns true for tool statuses that cannot mutate further.
+    private static func isToolTerminal(_ status: ToolStatus) -> Bool {
+        switch status {
+        case .success, .error, .interrupted: return true
+        case .running, .waitingForApproval:  return false
+        }
+    }
+
     /// Map local sessionId → server session id
     private var serverSessionIds: [String: String] = [:]
 
@@ -95,6 +118,7 @@ final class MessageRelay {
                 knownSessionIds.remove(sessionId)
                 syncedItemCounts.removeValue(forKey: sessionId)
                 syncedItemContents.removeValue(forKey: sessionId)
+                pendingToolItems.removeValue(forKey: sessionId)
                 serverSessionIds.removeValue(forKey: sessionId)
             }
         }
@@ -107,6 +131,7 @@ final class MessageRelay {
             knownSessionIds.remove(id)
             syncedItemCounts.removeValue(forKey: id)
             syncedItemContents.removeValue(forKey: id)
+            pendingToolItems.removeValue(forKey: id)
         }
     }
 
@@ -245,6 +270,7 @@ final class MessageRelay {
         }
 
         var contentMap = syncedItemContents[localId] ?? [:]
+        var pending = pendingToolItems[localId] ?? []
         var sentCount = 0
 
         // Sync new items (count-based)
@@ -264,27 +290,62 @@ final class MessageRelay {
                 contentMap[item.id] = content
                 connection.sendMessage(sessionId: serverId, content: content, localId: item.id)
                 sentCount += 1
+
+                // Track items that may still mutate so future ticks re-sync them.
+                // Tools: running/waiting → terminal status change
+                // Assistant: streaming partial text → final complete text
+                switch item.type {
+                case .toolCall(let tool) where !Self.isToolTerminal(tool.status):
+                    pending.insert(item.id)
+                case .assistant:
+                    pending.insert(item.id)
+                default:
+                    break
+                }
             }
         }
 
-        // Re-sync mutated tool items (running→success, result populated).
-        // Count-based tracking misses in-place mutations, so we compare content.
-        // Only tool items mutate after initial sync; other types are immutable.
-        for item in items.prefix(syncedCount) {
-            guard case .toolCall = item.type else { continue }
-            let content = serializeChatItem(item)
-            if let prev = contentMap[item.id], prev != content {
-                contentMap[item.id] = content
-                connection.sendMessage(sessionId: serverId, content: content, localId: item.id)
-                sentCount += 1
-                Self.logger.info("Re-synced mutated tool \(item.id.prefix(12))...")
+        // Re-sync mutated tool items. Iterate ONLY the small pending set,
+        // not the whole history, so long sessions stay cheap. When a tool
+        // reaches a terminal state AND we've captured its terminal content,
+        // drop it from pending — further ticks skip serialization for it.
+        if !pending.isEmpty {
+            let itemsById = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+            var settled: Set<String> = []
+            for itemId in pending {
+                guard let item = itemsById[itemId] else {
+                    // Item disappeared (session clear / history trim).
+                    settled.insert(itemId)
+                    continue
+                }
+                let content = serializeChatItem(item)
+                if contentMap[itemId] != content {
+                    contentMap[itemId] = content
+                    connection.sendMessage(sessionId: serverId, content: content, localId: itemId)
+                    sentCount += 1
+                    Self.logger.info("Re-synced mutated item \(itemId.prefix(12))...")
+                }
+                // Settle items that can no longer mutate.
+                switch item.type {
+                case .toolCall(let tool) where Self.isToolTerminal(tool.status):
+                    settled.insert(itemId)
+                case .assistant:
+                    // Assistant text settles when session ends (phase .ended removes
+                    // pendingToolItems entirely). Don't settle here — keep tracking
+                    // until the session cleanup pass confirms streaming is done.
+                    break
+                default:
+                    settled.insert(itemId)
+                }
             }
+            pending.subtract(settled)
         }
 
         syncedItemContents[localId] = contentMap
+        pendingToolItems[localId] = pending
 
         if sentCount > 0 {
-            Self.logger.info("Synced \(sentCount) messages for \(localId.prefix(8))...")
+            Self.logger.info("Synced \(sentCount) messages for \(localId.prefix(8))... pending=\(pending.count)")
         }
     }
 
