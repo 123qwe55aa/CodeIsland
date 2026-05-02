@@ -408,7 +408,7 @@ struct HookInstaller {
         }
     }
 
-    private static func runSSHCommandWithOutput(args: [String], timeout: Int) -> (stdout: String?, stderr: String?) {
+    static func runSSHCommandWithOutput(args: [String], timeout: Int) -> (stdout: String?, stderr: String?) {
         let p = Process()
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()

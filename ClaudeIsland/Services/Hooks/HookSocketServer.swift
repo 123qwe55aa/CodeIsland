@@ -37,6 +37,10 @@ struct HookEvent: Codable, Sendable {
     let conversationFirstMessage: String?
     let conversationLatestMessage: String?
     let conversationLastTool: String?
+    let source: String?
+    let transcriptPath: String?
+    let terminalApp: String?
+    let shouldSync: Bool?
 
     enum CodingKeys: String, CodingKey {
         case sessionId = "session_id"
@@ -57,6 +61,11 @@ struct HookEvent: Codable, Sendable {
         // Additional keys for compatibility with hook script format
         case hookEventName = "hook_event_name"
         case sessionPhase = "session_phase"
+        // Additional hook event fields
+        case source
+        case transcriptPath = "transcript_path"
+        case terminalApp = "terminal_app"
+        case shouldSync = "should_sync_file"
     }
 
     init(from decoder: Decoder) throws {
@@ -83,6 +92,10 @@ struct HookEvent: Codable, Sendable {
         conversationFirstMessage = try container.decodeIfPresent(String.self, forKey: .conversationFirstMessage)
         conversationLatestMessage = try container.decodeIfPresent(String.self, forKey: .conversationLatestMessage)
         conversationLastTool = try container.decodeIfPresent(String.self, forKey: .conversationLastTool)
+        source = try container.decodeIfPresent(String.self, forKey: .source)
+        transcriptPath = try container.decodeIfPresent(String.self, forKey: .transcriptPath)
+        terminalApp = try container.decodeIfPresent(String.self, forKey: .terminalApp)
+        shouldSync = try container.decodeIfPresent(Bool.self, forKey: .shouldSync)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -106,10 +119,14 @@ struct HookEvent: Codable, Sendable {
         try container.encodeIfPresent(conversationFirstMessage, forKey: .conversationFirstMessage)
         try container.encodeIfPresent(conversationLatestMessage, forKey: .conversationLatestMessage)
         try container.encodeIfPresent(conversationLastTool, forKey: .conversationLastTool)
+        try container.encodeIfPresent(source, forKey: .source)
+        try container.encodeIfPresent(transcriptPath, forKey: .transcriptPath)
+        try container.encodeIfPresent(terminalApp, forKey: .terminalApp)
+        try container.encodeIfPresent(shouldSync, forKey: .shouldSync)
     }
 
     /// Create a copy with updated toolUseId
-    init(sessionId: String, cwd: String, event: String, status: String, pid: Int?, tty: String?, tool: String?, toolInput: [String: AnyCodable]?, toolUseId: String?, notificationType: String?, message: String?, remoteHost: String? = nil, remoteUser: String? = nil, remoteTmuxTarget: String? = nil, lastToolName: String? = nil, conversationSummary: String? = nil, conversationFirstMessage: String? = nil, conversationLatestMessage: String? = nil, conversationLastTool: String? = nil) {
+    init(sessionId: String, cwd: String, event: String, status: String, pid: Int?, tty: String?, tool: String?, toolInput: [String: AnyCodable]?, toolUseId: String?, notificationType: String?, message: String?, remoteHost: String? = nil, remoteUser: String? = nil, remoteTmuxTarget: String? = nil, lastToolName: String? = nil, conversationSummary: String? = nil, conversationFirstMessage: String? = nil, conversationLatestMessage: String? = nil, conversationLastTool: String? = nil, source: String? = nil, transcriptPath: String? = nil, terminalApp: String? = nil, shouldSync: Bool? = nil) {
         self.sessionId = sessionId
         self.cwd = cwd
         self.event = event
@@ -129,6 +146,10 @@ struct HookEvent: Codable, Sendable {
         self.conversationFirstMessage = conversationFirstMessage
         self.conversationLatestMessage = conversationLatestMessage
         self.conversationLastTool = conversationLastTool
+        self.source = source
+        self.transcriptPath = transcriptPath
+        self.terminalApp = terminalApp
+        self.shouldSync = shouldSync
     }
 
     var sessionPhase: SessionPhase {

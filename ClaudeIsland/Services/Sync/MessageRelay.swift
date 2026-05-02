@@ -53,7 +53,7 @@ final class MessageRelay {
     /// Start relaying session events to the server.
     func startRelaying() {
         // Use mainActorPublisher() which returns a properly MainActor-bridged publisher
-        SessionStore.shared.mainActorPublisher()
+        SessionStore.shared.sessionsPublisher
             .sink { [weak self] sessions in
                 Task { @MainActor in
                     await self?.handleSessionsUpdate(sessions)
@@ -138,6 +138,8 @@ final class MessageRelay {
         case .waitingForInput:
             // "Waiting for user input" = Claude just finished successfully
             return ("ended", nil)
+        case .waitingForQuestion:
+            return ("waiting_input", nil)
         case .compacting:
             return ("thinking", "compacting")
         case .ended:

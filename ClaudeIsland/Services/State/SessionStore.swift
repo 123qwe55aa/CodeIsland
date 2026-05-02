@@ -129,6 +129,9 @@ actor SessionStore {
 
         case .clearEndedSessions:
             clearEndedSessions()
+
+        case .removeSession(let sessionId):
+            sessions.removeValue(forKey: sessionId)
         }
 
         publishState()

@@ -21,7 +21,7 @@ final class SyncManager: ObservableObject {
     @Published private(set) var isEnabled = false
     @Published private(set) var connectionState: ServerConnectionState = .disconnected
 
-    private var connection: ServerConnection?
+    var connection: ServerConnection?
     private var relay: MessageRelay?
     private var rpcExecutor: RPCExecutor?
     private var capabilityTimer: Timer?
@@ -139,6 +139,9 @@ final class SyncManager: ObservableObject {
             // Periodically upload known project paths so the phone can pick from
             // recent projects when launching a session.
             scheduleProjectUploads()
+
+            // Fetch remote sessions from server for display in the instances list.
+            await ServerSessionMonitor.shared.fetchNow()
         } catch {
             connectionState = .error(error.localizedDescription)
             Self.logger.error("Sync connection failed: \(error)")
