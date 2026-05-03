@@ -11,6 +11,7 @@
 		CL00000100000003AABBCC03 /* CodeLightProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = CL00000200000004AABBCC04 /* CodeLightProtocol */; };
 		CL00000100000005AABBCC05 /* CodeLightCrypto in Frameworks */ = {isa = PBXBuildFile; productRef = CL00000200000006AABBCC06 /* CodeLightCrypto */; };
 		FDA49F7D2EE11E3C00F9612E /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = FD33FD722EDF32D7002A6548 /* Markdown */; };
+		SP00000100000001SPARKLE01 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = SP00000200000002SPARKLE02 /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -47,6 +48,7 @@
 				CL00000100000001AABBCC01 /* SocketIO in Frameworks */,
 				CL00000100000003AABBCC03 /* CodeLightProtocol in Frameworks */,
 				CL00000100000005AABBCC05 /* CodeLightCrypto in Frameworks */,
+				SP00000100000001SPARKLE01 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -93,6 +95,7 @@
 				CL00000200000002AABBCC02 /* SocketIO */,
 				CL00000200000004AABBCC04 /* CodeLightProtocol */,
 				CL00000200000006AABBCC06 /* CodeLightCrypto */,
+				SP00000200000002SPARKLE02 /* Sparkle */,
 			);
 			productName = ClaudeIsland;
 			productReference = FD33FD5D2EDF32D7002A6548 /* Code Island.app */;
@@ -127,6 +130,7 @@
 				CL00000300000007AABBCC07 /* XCRemoteSwiftPackageReference "socket" */,
 				CL00000300000008AABBCC08 /* XCLocalSwiftPackageReference "../CodeLight/packages/CodeLightProtocol" */,
 				CL00000300000009AABBCC09 /* XCLocalSwiftPackageReference "../CodeLight/packages/CodeLightCrypto" */,
+				SP00000300000003SPARKLE03 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FD33FD5E2EDF32D7002A6548 /* Products */;
@@ -400,6 +404,14 @@
 				minimumVersion = 0.5.0;
 			};
 		};
+		SP00000300000003SPARKLE03 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.6.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -422,6 +434,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = FD33FD712EDF32D7002A6548 /* XCRemoteSwiftPackageReference "swift-markdown" */;
 			productName = Markdown;
+		};
+		SP00000200000002SPARKLE02 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = SP00000300000003SPARKLE03 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

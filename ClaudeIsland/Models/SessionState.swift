@@ -147,12 +147,19 @@ struct SessionState: Equatable, Identifiable, Sendable {
         self.needsClearReconciliation = needsClearReconciliation
         self.lastActivity = lastActivity
         self.createdAt = createdAt
-self.isSSH = isSSH
+        self.cmuxWorkspaceId = nil
+        self.cmuxSurfaceId = nil
+        self.codexTranscriptPath = nil
+        self.isSSH = isSSH
         self.remoteHost = remoteHost
         self.sshUser = sshUser
         self.sshPort = sshPort
         self.remoteTmuxTarget = remoteTmuxTarget
         self.connectionState = connectionState
+        self.lastStopAt = nil
+        self.endedAt = nil
+        self.currentTurnNonce = 0
+        self.lastCompletedTurnNonce = nil
     }
 
     // MARK: - Derived Properties

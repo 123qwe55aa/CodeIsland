@@ -87,12 +87,6 @@ import os.log
         // Initialize CodeLight sync (connects to server if configured)
         _ = SyncManager.shared
 
-// Compute "yesterday" activity report and schedule midnight refresh.
-        // Runs off the main thread inside the collector; launch is instant.
-        Task { @MainActor in
-            AnalyticsCollector.shared.start()
-        }
-
         // Start session monitoring (includes TCP relay for remote hooks)
         sessionMonitor.startMonitoring()
     }

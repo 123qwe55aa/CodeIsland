@@ -21,7 +21,10 @@ final class SyncManager: ObservableObject {
     @Published private(set) var isEnabled = false
     @Published private(set) var connectionState: ServerConnectionState = .disconnected
 
-    var connection: ServerConnection?
+    /// Exposes the underlying connection for LinkedDevices UI (PairPhoneView).
+    var connection: ServerConnection? { connection_ }
+
+    private var connection_: ServerConnection?
     private var relay: MessageRelay?
     private var rpcExecutor: RPCExecutor?
     private var capabilityTimer: Timer?
@@ -30,6 +33,36 @@ final class SyncManager: ObservableObject {
     /// Re-publishes the underlying ServerConnection.shortCode so SwiftUI views
     /// (PairPhoneView) can observe it via SyncManager directly.
     @Published private(set) var shortCode: String?
+
+    /// Text the phone injected into a Claude session via cmux. Used so MessageRelay
+    /// can skip re-uploading the same text when it re-appears in the JSONL (dedup).
+    /// Keyed by Claude session UUID; entries expire after 60s.
+    private var recentlyInjected: [String: [(text: String, at: Date)]] = [:]
+
+    func recordPhoneInjection(claudeUuid: String, text: String) {
+        pruneInjections()
+        recentlyInjected[claudeUuid, default: []].append((text, Date()))
+    }
+
+    /// Returns true and removes the entry if `text` was recently injected from phone.
+    func consumePhoneInjection(claudeUuid: String, text: String) -> Bool {
+        pruneInjections()
+        guard var list = recentlyInjected[claudeUuid] else { return false }
+        if let idx = list.firstIndex(where: { $0.text == text }) {
+            list.remove(at: idx)
+            recentlyInjected[claudeUuid] = list.isEmpty ? nil : list
+            return true
+        }
+        return false
+    }
+
+    private func pruneInjections() {
+        let cutoff = Date().addingTimeInterval(-60)
+        for (k, v) in recentlyInjected {
+            let kept = v.filter { $0.at > cutoff }
+            recentlyInjected[k] = kept.isEmpty ? nil : kept
+        }
+    }
 
     /// The server URL to connect to. Stored in UserDefaults.
     var serverUrl: String? {
@@ -60,7 +93,7 @@ final class SyncManager: ObservableObject {
         disconnectFromServer()
 
         let conn = ServerConnection(serverUrl: url)
-        self.connection = conn
+        self.connection_ = conn
 
         do {
             try await conn.authenticate()
@@ -95,12 +128,6 @@ final class SyncManager: ObservableObject {
             let rpc = RPCExecutor()
             self.rpcExecutor = rpc
 
-            // Restore persisted session mappings before starting relay
-            let savedMappings = await MessageOutbox.shared.allMappings
-            for (localId, serverId) in savedMappings {
-                relay.restoreServerSessionId(localId: localId, serverId: serverId)
-            }
-
             // Delay relay start to give socket time to connect
             Task { @MainActor in
                 // Wait up to 5 seconds for socket connection
@@ -111,7 +138,6 @@ final class SyncManager: ObservableObject {
 
                 if conn.isConnected {
                     relay.startRelaying()
-                    relay.scheduleOutboxDrain()
                     Self.logger.info("Relay started after socket connected")
                 } else {
                     Self.logger.warning("Socket did not connect in time, starting relay anyway")
@@ -139,9 +165,6 @@ final class SyncManager: ObservableObject {
             // Periodically upload known project paths so the phone can pick from
             // recent projects when launching a session.
             scheduleProjectUploads()
-
-            // Fetch remote sessions from server for display in the instances list.
-            await ServerSessionMonitor.shared.fetchNow()
         } catch {
             connectionState = .error(error.localizedDescription)
             Self.logger.error("Sync connection failed: \(error)")
@@ -166,35 +189,15 @@ final class SyncManager: ObservableObject {
         let trackedSession = localId.flatMap { id in sessions.first(where: { $0.sessionId == id }) }
         let targetUuid: String? = trackedSession?.sessionId ?? claudeUuid
         let livePid: Int? = trackedSession?.pid
-        // cmux IDs captured by hook script from os.environ — the only reliable
-        // way to route on modern macOS where `ps -E` hides env vars.
-        let cmuxWsId: String? = trackedSession?.cmuxWorkspaceId
-        let cmuxSurfId: String? = trackedSession?.cmuxSurfaceId
 
         // Parse the message content — it may be plain text OR a JSON envelope with images.
         let (parsedText, imageBlobIds) = parseMessagePayload(text)
-
-        // Read-screen path: phone explicitly sends `{type:"read-screen"}` to snapshot
-        // the current cmux tab's buffer. Fire-and-forget — we ship the captured text
-        // back as a synthetic terminal_output message, same pipeline as slash commands.
-        if isReadScreenRequest(text) {
-            if let uuid = targetUuid {
-                let snapshot = await TerminalWriter.shared.readScreen(claudeUuid: uuid, cwd: cwd, livePid: livePid, cmuxWorkspaceId: cmuxWsId, cmuxSurfaceId: cmuxSurfId, terminalApp: trackedSession?.terminalApp)
-                if let snapshot, !snapshot.isEmpty {
-                    await sendTerminalOutputMessage(sessionId: serverSessionId, command: "read-screen", output: snapshot)
-                }
-                Self.logger.info("Phone read-screen (uuid=\(uuid.prefix(8), privacy: .public) pid=\(livePid?.description ?? "nil", privacy: .public) term=\(trackedSession?.terminalApp ?? "nil", privacy: .public)) → captured=\(snapshot != nil)")
-            } else {
-                Self.logger.warning("read-screen dropped: no target uuid")
-            }
-            return
-        }
 
         // Control-key path: phone explicitly sends `{type:"key", key:"escape"}` etc.
         // These don't go through stdin — we fire them directly at the cmux surface.
         if let controlKey = parseControlKey(text) {
             if let uuid = targetUuid {
-                let ok = await TerminalWriter.shared.sendControlKey(controlKey, claudeUuid: uuid, cwd: cwd, livePid: livePid, cmuxWorkspaceId: cmuxWsId, cmuxSurfaceId: cmuxSurfId, terminalApp: trackedSession?.terminalApp)
+                let ok = await TerminalWriter.shared.sendControlKey(controlKey, claudeUuid: uuid, cwd: cwd, livePid: livePid)
                 Self.logger.info("Phone control key '\(controlKey, privacy: .public)' (uuid=\(uuid.prefix(8), privacy: .public) pid=\(livePid?.description ?? "nil", privacy: .public)) → \(ok ? "success" : "failed")")
             } else {
                 Self.logger.warning("Control key dropped: no target uuid")
@@ -223,8 +226,8 @@ final class SyncManager: ObservableObject {
             if images.isEmpty {
                 Self.logger.warning("No images could be downloaded — falling back to text-only")
             } else {
-let ok = await TerminalWriter.shared.sendImagesAndText(images: images, text: parsedText, claudeUuid: targetUuid, cwd: cwd, livePid: livePid)
-                if ok { await MessageOutbox.shared.recordInjection(claudeUuid: targetUuid, text: parsedText) }
+                let ok = await TerminalWriter.shared.sendImagesAndText(images: images, text: parsedText, claudeUuid: targetUuid, cwd: cwd, livePid: livePid)
+                if ok { recordPhoneInjection(claudeUuid: targetUuid, text: parsedText) }
                 Self.logger.info("Phone message with \(images.count) image(s) → terminal: \(ok ? "success" : "failed")")
                 return
             }
@@ -236,28 +239,24 @@ let ok = await TerminalWriter.shared.sendImagesAndText(images: images, text: par
         // command, wait, snapshot again, diff, and ship the new lines back as a
         // synthetic terminal_output message.
         if parsedText.hasPrefix("/"), let targetUuid {
-let output = await TerminalWriter.shared.sendSlashCommandAndCaptureOutput(parsedText, claudeUuid: targetUuid, cwd: cwd, livePid: livePid)
-            await MessageOutbox.shared.recordInjection(claudeUuid: targetUuid, text: parsedText)
+            let output = await TerminalWriter.shared.sendSlashCommandAndCaptureOutput(parsedText, claudeUuid: targetUuid, cwd: cwd, livePid: livePid)
+            recordPhoneInjection(claudeUuid: targetUuid, text: parsedText)
             if let output, !output.isEmpty {
                 await sendTerminalOutputMessage(sessionId: serverSessionId, command: parsedText, output: output)
             }
-            // cmux target not found — fall through to plain text path for non-cmux terminals
-            Self.logger.info("Slash command /\(parsedText.dropFirst().prefix(20)) capture unavailable, sending as text")
+            Self.logger.info("Phone slash command /\(parsedText.dropFirst().prefix(20)) → captured=\(output != nil)")
+            return
         }
 
         // Plain text path — uses the unified target identity computed at the top.
-        let termApp = trackedSession?.terminalApp
         if let uuid = targetUuid {
             let sent = await TerminalWriter.shared.sendTextDirect(
                 parsedText,
                 claudeUuid: uuid,
                 cwd: cwd,
-                livePid: livePid,
-                cmuxWorkspaceId: cmuxWsId,
-                cmuxSurfaceId: cmuxSurfId,
-                terminalApp: termApp
+                livePid: livePid
             )
-            if sent { await MessageOutbox.shared.recordInjection(claudeUuid: uuid, text: parsedText) }
+            if sent { recordPhoneInjection(claudeUuid: uuid, text: parsedText) }
             Self.logger.info("Phone message → terminal (uuid=\(uuid.prefix(8), privacy: .public) pid=\(livePid?.description ?? "nil", privacy: .public)): \(sent ? "success" : "failed")")
             return
         }
@@ -346,14 +345,6 @@ let output = await TerminalWriter.shared.sendSlashCommandAndCaptureOutput(parsed
         connection.sendMessage(sessionId: sessionId, content: json, localId: localId)
     }
 
-    /// True if the message is a `{type:"read-screen"}` envelope from the phone.
-    private func isReadScreenRequest(_ content: String) -> Bool {
-        guard let data = content.data(using: .utf8),
-              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return false }
-        return (dict["type"] as? String) == "read-screen"
-    }
-
     /// Extract a control key name from a message payload of shape `{type:"key", key:"escape"}`.
     /// Returns nil if the message isn't a control-key envelope.
     private func parseControlKey(_ content: String) -> String? {
@@ -383,8 +374,8 @@ let output = await TerminalWriter.shared.sendSlashCommandAndCaptureOutput(parsed
 
     func disconnectFromServer() {
         relay?.stopRelaying()
-        connection?.disconnect()
-        connection = nil
+        connection_?.disconnect()
+        connection_ = nil
         relay = nil
         rpcExecutor = nil
         capabilityTimer?.invalidate()

@@ -173,15 +173,6 @@ actor SessionStore {
         var session = sessions[sessionId] ?? createSession(from: event)
 
         session.pid = event.pid
-        // Plumb cmux workspace/surface IDs captured by the hook script from its
-        // own environment. This is the only reliable source — ps -E doesn't
-        // expose env vars for hardened-runtime claude processes.
-        if let wsId = event.cmuxWorkspaceId, !wsId.isEmpty {
-            session.cmuxWorkspaceId = wsId
-        }
-        if let surfId = event.cmuxSurfaceId, !surfId.isEmpty {
-            session.cmuxSurfaceId = surfId
-        }
         if event.source == "codex" {
             // Codex sessions: always set "Codex" as terminal app, skip process tree
             session.terminalApp = "Codex"

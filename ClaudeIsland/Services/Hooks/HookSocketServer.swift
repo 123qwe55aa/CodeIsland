@@ -149,10 +149,7 @@ let shouldSync: Bool?
         self.source = source
         self.transcriptPath = transcriptPath
         self.terminalApp = terminalApp
-<<<<<<< HEAD
-        self.cmuxWorkspaceId = cmuxWorkspaceId
-        self.cmuxSurfaceId = cmuxSurfaceId
-self.shouldSync = shouldSync
+        self.shouldSync = shouldSync
     }
 
     var sessionPhase: SessionPhase {
