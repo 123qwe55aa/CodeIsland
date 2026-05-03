@@ -8,6 +8,14 @@
 
 import Foundation
 
+// MARK: - SSH Connection State
+
+enum SSHConnectionState: String, Codable, Sendable {
+    case connected
+    case reconnecting
+    case disconnected
+}
+
 /// Complete state for a single Claude session
 /// This is the single source of truth - all state reads and writes go through SessionStore
 struct SessionState: Equatable, Identifiable, Sendable {
@@ -32,6 +40,15 @@ struct SessionState: Equatable, Identifiable, Sendable {
     var cmuxSurfaceId: String?
     /// Codex rollout transcript path (non-nil for Codex sessions)
     var codexTranscriptPath: String?
+
+    // MARK: - SSH (Remote Session)
+
+    var isSSH: Bool
+    var remoteHost: String?
+    var sshUser: String?
+    var sshPort: Int
+    var remoteTmuxTarget: String?
+    var connectionState: SSHConnectionState
 
     // MARK: - State Machine
 
@@ -107,7 +124,13 @@ struct SessionState: Equatable, Identifiable, Sendable {
         ),
         needsClearReconciliation: Bool = false,
         lastActivity: Date = Date(),
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        isSSH: Bool = false,
+        remoteHost: String? = nil,
+        sshUser: String? = nil,
+        sshPort: Int = 22,
+        remoteTmuxTarget: String? = nil,
+        connectionState: SSHConnectionState = .disconnected
     ) {
         self.sessionId = sessionId
         self.cwd = cwd
@@ -124,8 +147,12 @@ struct SessionState: Equatable, Identifiable, Sendable {
         self.needsClearReconciliation = needsClearReconciliation
         self.lastActivity = lastActivity
         self.createdAt = createdAt
-        self.currentTurnNonce = 0
-        self.lastCompletedTurnNonce = nil
+self.isSSH = isSSH
+        self.remoteHost = remoteHost
+        self.sshUser = sshUser
+        self.sshPort = sshPort
+        self.remoteTmuxTarget = remoteTmuxTarget
+        self.connectionState = connectionState
     }
 
     // MARK: - Derived Properties

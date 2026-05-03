@@ -24,34 +24,7 @@ final class MessageRelay {
     /// Track how many chat items we've already synced per session
     private var syncedItemCounts: [String: Int] = [:]
 
-    /// Last serialized content sent to server, keyed by session+item id.
-    /// Used to detect tool status mutations (running→success) that need re-sync.
-    private var syncedItemContents: [String: [String: String]] = [:]
-
-    /// Tool item IDs (per session) whose final terminal content has NOT yet
-    /// been sent to the server. Populated when we sync a new tool in a
-    /// non-terminal state, or when an existing entry's status flips to
-    /// terminal (so we know to capture its final content next tick). An
-    /// item is removed from this set once we've re-sent its terminal
-    /// content — future ticks then skip serializing it entirely.
-    ///
-    /// Why: without this, every `syncNewMessages` tick re-serializes ALL
-    /// already-synced tool items to detect in-place mutations. With 500+
-    /// tools in a long session that's 500 JSON encodes per tick, even
-    /// though 99 % of those tools are in a terminal state that can't
-    /// change anymore. This restricts serialization to the handful of
-    /// tools actually still mutating.
-    private var pendingToolItems: [String: Set<String>] = [:]
-
-    /// Returns true for tool statuses that cannot mutate further.
-    private static func isToolTerminal(_ status: ToolStatus) -> Bool {
-        switch status {
-        case .success, .error, .interrupted: return true
-        case .running, .waitingForApproval:  return false
-        }
-    }
-
-    /// Map local sessionId → server session id
+/// Map local sessionId → server session id (in-memory cache, persisted via MessageOutbox)
     private var serverSessionIds: [String: String] = [:]
 
     /// Track last sent phase per session to avoid duplicate updates
@@ -59,9 +32,18 @@ final class MessageRelay {
     private var lastSentTool: [String: String] = [:]
     private var lastSentTitle: [String: String] = [:]
 
+    /// Task draining the outbox on reconnect (cancelled on disconnect)
+    private var outboxDrainTask: Task<Void, Never>?
+
     /// Reverse lookup: server session id → local session id
     func localSessionId(forServerId serverId: String) -> String? {
         return serverSessionIds.first(where: { $0.value == serverId })?.key
+    }
+
+    /// Restore a session mapping after app restart (from persisted outbox)
+    func restoreServerSessionId(localId: String, serverId: String) {
+        serverSessionIds[localId] = serverId
+        Self.logger.info("Restored server session mapping: \(localId.prefix(8)) → \(serverId.prefix(8))")
     }
 
     init(connection: ServerConnection) {
@@ -70,10 +52,12 @@ final class MessageRelay {
 
     /// Start relaying session events to the server.
     func startRelaying() {
+        // Use mainActorPublisher() which returns a properly MainActor-bridged publisher
         SessionStore.shared.sessionsPublisher
-            .receive(on: DispatchQueue.main)
             .sink { [weak self] sessions in
-                self?.handleSessionsUpdate(sessions)
+                Task { @MainActor in
+                    await self?.handleSessionsUpdate(sessions)
+                }
             }
             .store(in: &cancellables)
 
@@ -81,6 +65,8 @@ final class MessageRelay {
     }
 
     func stopRelaying() {
+        outboxDrainTask?.cancel()
+        outboxDrainTask = nil
         cancellables.removeAll()
         aliveTimers.values.forEach { $0.invalidate() }
         aliveTimers.removeAll()
@@ -89,7 +75,7 @@ final class MessageRelay {
 
     // MARK: - Session State Processing
 
-    private func handleSessionsUpdate(_ sessions: [SessionState]) {
+    private func handleSessionsUpdate(_ sessions: [SessionState]) async {
         Self.logger.debug("handleSessionsUpdate: \(sessions.count) sessions, known=\(self.knownSessionIds.count), server=\(self.serverSessionIds.count)")
         for session in sessions {
             let sessionId = session.sessionId
@@ -99,7 +85,7 @@ final class MessageRelay {
                 Self.logger.info("New session detected: \(sessionId.prefix(8))")
                 knownSessionIds.insert(sessionId)
                 syncedItemCounts[sessionId] = 0
-                Task { await createServerSession(session) }
+                await createServerSession(session)
                 startAliveTimer(for: sessionId)
             }
 
@@ -107,7 +93,7 @@ final class MessageRelay {
             syncPhaseChange(session)
 
             // Sync new chat items
-            syncNewMessages(session)
+            await syncNewMessages(session)
 
             // Handle ended sessions
             if session.phase == .ended {
@@ -153,11 +139,11 @@ final class MessageRelay {
             return ("thinking", nil)
         case .waitingForApproval(let ctx):
             return ("waiting_approval", ctx.toolName)
-        case .waitingForQuestion:
-            return ("waiting_question", nil)
         case .waitingForInput:
             // "Waiting for user input" = Claude just finished successfully
             return ("ended", nil)
+        case .waitingForQuestion:
+            return ("waiting_input", nil)
         case .compacting:
             return ("thinking", "compacting")
         case .ended:
@@ -250,7 +236,7 @@ final class MessageRelay {
 
     // MARK: - Message Sync
 
-    private func syncNewMessages(_ session: SessionState) {
+    private func syncNewMessages(_ session: SessionState) async {
         let localId = session.sessionId
         let syncedCount = syncedItemCounts[localId] ?? 0
         let items = session.chatItems
@@ -264,44 +250,30 @@ final class MessageRelay {
         let isConn = self.connection.isConnected
         Self.logger.info("syncNewMessages: \(localId.prefix(8))... items=\(items.count) synced=\(syncedCount) connected=\(isConn) serverId=\(serverId.prefix(8))...")
 
-        guard connection.isConnected else {
-            Self.logger.warning("Skipping sync: not connected")
+guard items.count > syncedCount else { return }
+
+        // Only sync new items
+        let newItems = Array(items.dropFirst(syncedCount))
+        syncedItemCounts[localId] = items.count
+
+        // If not connected: persist to outbox instead of dropping
+        if !connection.isConnected {
+            Self.logger.warning("Not connected — persisting \(newItems.count) items to outbox")
+            for item in newItems {
+                let content = serializeChatItem(item)
+                await MessageOutbox.shared.enqueue(message: content, sessionId: serverId, localId: item.id)
+            }
             return
         }
 
-        var contentMap = syncedItemContents[localId] ?? [:]
-        var pending = pendingToolItems[localId] ?? []
         var sentCount = 0
-
-        // Sync new items (count-based)
-        if items.count > syncedCount {
-            let newItems = Array(items.dropFirst(syncedCount))
-            syncedItemCounts[localId] = items.count
-
-            for item in newItems {
-                // Dedup: skip user messages that the phone just injected via cmux — they'd
-                // otherwise round-trip back to the phone as a second copy.
-                if case .user(let text) = item.type,
-                   SyncManager.shared.consumePhoneInjection(claudeUuid: localId, text: text) {
-                    Self.logger.info("Skipping echo of phone-injected user message")
-                    continue
-                }
-                let content = serializeChatItem(item)
-                contentMap[item.id] = content
-                connection.sendMessage(sessionId: serverId, content: content, localId: item.id)
-                sentCount += 1
-
-                // Track items that may still mutate so future ticks re-sync them.
-                // Tools: running/waiting → terminal status change
-                // Assistant: streaming partial text → final complete text
-                switch item.type {
-                case .toolCall(let tool) where !Self.isToolTerminal(tool.status):
-                    pending.insert(item.id)
-                case .assistant:
-                    pending.insert(item.id)
-                default:
-                    break
-                }
+        for item in newItems {
+            // Dedup: skip user messages that the phone just injected via cmux — they'd
+            // otherwise round-trip back to the phone as a second copy.
+            if case .user(let text) = item.type,
+               await MessageOutbox.shared.consumeInjection(claudeUuid: localId, text: text) {
+                Self.logger.info("Skipping echo of phone-injected user message")
+                continue
             }
         }
 
@@ -413,10 +385,46 @@ final class MessageRelay {
             )
             if let serverId = result["id"] as? String {
                 serverSessionIds[session.sessionId] = serverId
+                // Persist mapping so we can restore on app restart
+                await MessageOutbox.shared.recordMapping(localId: session.sessionId, serverId: serverId)
                 Self.logger.info("Created server session \(serverId) for \(session.sessionId)")
             }
         } catch {
             Self.logger.error("Failed to create server session: \(error)")
+        }
+    }
+
+    // MARK: - Outbox Drain
+
+    /// Schedule outbox drain when connection is restored
+    func scheduleOutboxDrain() {
+        outboxDrainTask?.cancel()
+        outboxDrainTask = Task { [weak self] in
+            await self?.drainOutbox()
+        }
+    }
+
+    /// Replay pending messages from the outbox in FIFO order
+    private func drainOutbox() async {
+        guard connection.isConnected else { return }
+
+        let pending = await MessageOutbox.shared.dequeuePending()
+        guard !pending.isEmpty else { return }
+
+        Self.logger.info("Draining outbox: \(pending.count) messages")
+
+        var delivered: [String] = []
+        var failed: [String] = []
+
+        for entry in pending {
+            guard connection.isConnected else { break }
+            connection.sendMessage(sessionId: entry.sessionId, content: entry.content, localId: entry.localId)
+            delivered.append(entry.id)
+        }
+
+        if !delivered.isEmpty {
+            await MessageOutbox.shared.markDelivered(ids: delivered)
+            Self.logger.info("Outbox drain: delivered \(delivered.count) messages")
         }
     }
 

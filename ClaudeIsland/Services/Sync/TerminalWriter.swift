@@ -310,6 +310,11 @@ final class TerminalWriter {
     func sendText(_ text: String, to session: SessionState) async -> Bool {
         let termApp = session.terminalApp?.lowercased() ?? ""
 
+        // SSH remote sessions: route via relay command
+        if session.isSSH, let host = session.remoteHost, let user = session.sshUser, let target = session.remoteTmuxTarget {
+            return await sendTextViaSSH(text, host: host, user: user, target: target)
+        }
+
         // Try cmux first (most precise)
         if FileManager.default.isExecutableFile(atPath: cmuxPath) {
             if await sendViaCmux(text, session: session) {
@@ -1041,13 +1046,24 @@ final class TerminalWriter {
     }
 
     /// Read CMUX_WORKSPACE_ID and CMUX_SURFACE_ID env vars from a running pid.
-    /// Returns nil if the pid is gone, has no CMUX_WORKSPACE_ID, or ps fails.
-    /// Uses `-Eww` to prevent macOS ps from truncating long env lines — without
-    /// `-ww`, CMUX env vars near the end of the environment get cut off and we
-    /// return nil incorrectly.
-    nonisolated private func readCmuxIDs(forPid pid: Int) async -> (workspaceId: String, surfaceId: String?)? {
-        let (out, ok) = await runShellWithTimeout("/bin/ps", ["-Eww", "-p", "\(pid)", "-o", "command="], timeout: 2.0)
-        guard ok, let envLine = out else { return nil }
+/// Returns nil if the pid is gone, has no CMUX_WORKSPACE_ID, or ps -E fails.
+    /// Results are cached for 5 minutes to avoid repeated ps syscalls.
+    nonisolated private func readCmuxIDs(forPid pid: Int) -> (workspaceId: String, surfaceId: String?)? {
+        // Check cache first
+        if let cached = CmuxTargetCache.shared.get(pid) {
+            return cached
+        }
+
+        let ps = Process()
+        let pipe = Pipe()
+        ps.executableURL = URL(fileURLWithPath: "/bin/ps")
+        ps.arguments = ["-E", "-p", "\(pid)", "-o", "command="]
+        ps.standardOutput = pipe
+        ps.standardError = FileHandle.nullDevice
+        do { try ps.run() } catch { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        ps.waitUntilExit()
+        guard let envLine = String(data: data, encoding: .utf8) else { return nil }
 
         var wsId: String?
         var surfId: String?
@@ -1059,7 +1075,10 @@ final class TerminalWriter {
             }
         }
         guard let wsId else { return nil }
-        return (wsId, surfId)
+        let result = (wsId, surfId)
+        // Cache the result
+        CmuxTargetCache.shared.set(pid, target: result)
+        return result
     }
 
     // MARK: - cmux
@@ -1104,13 +1123,60 @@ final class TerminalWriter {
         return true
     }
 
-    /// Invoke the cmux CLI with a hard timeout. Returns nil on launch failure,
-    /// non-zero exit, or timeout. All cmux calls MUST go through here — the
-    /// previous raw Process.waitUntilExit could freeze the main thread when
-    /// cmux became unresponsive (main cause of the "CodeIsland 卡死" reports).
-    nonisolated private func cmuxRun(_ args: [String]) async -> String? {
-        let (out, ok) = await runShellWithTimeout(cmuxPath, args, timeout: 5.0)
-        return ok ? out : nil
+// MARK: - SSH Remote
+
+    /// Valid tmux target pattern: alphanumeric with session separators
+    private static let tmuxTargetPattern = #"^[a-zA-Z0-9_.:#@-%]+$"#
+
+    /// Send text to a remote tmux session via SSH relay.
+    /// SECURITY: Text is base64-encoded to prevent command injection when passed through
+    /// a shell command string. Without this, characters like $() or backticks in the text
+    /// would be evaluated as shell commands on the remote.
+    /// The tmux target is also validated against a strict pattern.
+    private func sendTextViaSSH(_ text: String, host: String, user: String, target: String) async -> Bool {
+        // Validate target to prevent command injection through tmux target field
+        guard let regex = try? NSRegularExpression(pattern: Self.tmuxTargetPattern),
+              regex.firstMatch(in: target, range: NSRange(target.startIndex..., in: target)) != nil else {
+            Self.logger.error("Invalid tmux target rejected: \(target)")
+            return false
+        }
+
+        var sshArgs = ["-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=2", "\(user)@\(host)"]
+
+        // Base64-encode the text to prevent shell injection via $(), backticks, etc.
+        guard let textData = text.data(using: .utf8) else { return false }
+        let encoded = textData.base64EncodedString()
+        // Decode on remote and pass to tmux -- stops shell interpretation entirely.
+        // The decoded content is passed to tmux send-keys -- which takes literal text.
+        let remoteCmd = "printf '%s' '\(encoded)' | base64 -d | tmux send-keys -t \(target) -- - && tmux send-keys -t \(target) Enter"
+
+        do {
+            _ = try await ProcessExecutor.shared.run(
+                "/usr/bin/ssh",
+                arguments: sshArgs + ["-o", "StrictHostKeyChecking=accept-new", remoteCmd]
+            )
+            Self.logger.info("Sent text via SSH to \(host):\(target)")
+            return true
+        } catch {
+            Self.logger.error("SSH send failed to \(host):\(target): \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private func cmuxRun(_ args: [String]) -> String? {
+        let p = Process()
+        let pipe = Pipe()
+        p.executableURL = URL(fileURLWithPath: cmuxPath)
+        p.arguments = args
+        p.standardOutput = pipe
+        p.standardError = FileHandle.nullDevice
+        do {
+            try p.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            guard p.terminationStatus == 0 else { return nil }
+            return String(data: data, encoding: .utf8)
+        } catch { return nil }
     }
 
     // MARK: - AppleScript

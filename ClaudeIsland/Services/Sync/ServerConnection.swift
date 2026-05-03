@@ -22,6 +22,15 @@ enum ServerConnectionState: Equatable, Sendable {
     case error(String)
 }
 
+/// Result of a sessions fetch operation.
+/// Allows callers to distinguish network/auth failures from empty results
+/// without throwing, enabling UI to surface actionable error messages.
+enum FetchSessionsResult: Equatable, Sendable {
+    case success([RemoteSessionState])
+    case notAuthenticated
+    case networkError(String)
+}
+
 /// Manages connection to a single CodeLight Server instance.
 @MainActor
 final class ServerConnection: ObservableObject {
@@ -302,6 +311,69 @@ final class ServerConnection: ObservableObject {
     /// Create or load a session on the server
     func createSession(tag: String, metadata: String) async throws -> [String: Any] {
         return try await postJSON(path: "/v1/sessions", body: ["tag": tag, "metadata": metadata])
+    }
+
+    /// Fetch sessions from the server, returning a typed Result.
+    ///
+    /// Returns ``.success([])`` when sessions list is empty or response lacks the `sessions` key.
+    /// Returns ``.notAuthenticated`` when no auth token is available.
+    /// Returns ``.networkError(msg)`` on URLSession failure.
+    ///
+    /// **No crashes on failure.** Callers can distinguish all three cases.
+    func fetchSessions() async -> FetchSessionsResult {
+        guard let token else {
+            Self.logger.warning("fetchSessions: no auth token")
+            return .notAuthenticated
+        }
+
+        do {
+            let res = try await getJSON(path: "/v1/sessions/mine")
+            guard let array = res["sessions"] as? [[String: Any]] else {
+                Self.logger.warning("fetchSessions: unexpected response shape — no 'sessions' key")
+                return .success([])
+            }
+            let sessions = array.compactMap { RemoteSessionState(from: $0) }
+            Self.logger.info("fetchSessions: received \(sessions.count) sessions")
+            return .success(sessions)
+        } catch {
+            Self.logger.error("fetchSessions failed: \(error.localizedDescription)")
+            return .networkError(error.localizedDescription)
+        }
+    }
+
+    /// Fetch sessions returning `[RemoteSessionState]` (errors mapped to empty array).
+    ///
+    /// Convenience overload for callers that prefer a simple `[T]` return type
+    /// and do not need to act on the failure reason.
+    func fetchSessions() async -> [RemoteSessionState] {
+        // Disambiguate: explicitly use the FetchSessionsResult overload
+        let result: FetchSessionsResult = await self.fetchSessions()
+        switch result {
+        case .success(let sessions):
+            return sessions
+        case .notAuthenticated:
+            Self.logger.warning("fetchSessions: not authenticated")
+            return []
+        case .networkError(let msg):
+            Self.logger.warning("fetchSessions: network error — \(msg)")
+            return []
+        }
+    }
+
+    // MARK: - ServerSessionFetcher conformance
+    func fetchRemoteSessions() async -> [RemoteSessionState] {
+        // Disambiguate: explicitly use the FetchSessionsResult overload
+        let result: FetchSessionsResult = await self.fetchSessions()
+        switch result {
+        case .success(let sessions):
+            return sessions
+        case .notAuthenticated:
+            Self.logger.warning("fetchRemoteSessions: not authenticated")
+            return []
+        case .networkError(let msg):
+            Self.logger.warning("fetchRemoteSessions: network error — \(msg)")
+            return []
+        }
     }
 
     // MARK: - HTTP Helpers

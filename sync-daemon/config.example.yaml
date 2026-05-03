@@ -1,0 +1,25 @@
+# ─── Device ────────────────────────────────────────────────────────────────────
+# Unique ID for this machine (used as JWT subject / session tag prefix).
+# Generate with: python3 -c "import uuid; print(uuid.uuid4().hex)"
+deviceId: "REPLACE_WITH_YOUR_DEVICE_UUID"
+
+# ─── Auth ─────────────────────────────────────────────────────────────────────
+# JWT secret shared between this machine and the Mio server.
+# Must match the server's JWT_SECRET env var.
+jwtSecret: "REPLACE_WITH_YOUR_JWT_SECRET"
+
+# ─── Server ──────────────────────────────────────────────────────────────────
+serverUrl: "https://your-mio-server.example.com"
+
+# ─── JSONL Session Files ──────────────────────────────────────────────────────
+# Path to the directory containing Claude Code session .jsonl files.
+# Claude Code stores sessions under ~/.claude/projects/<project-dir>/<session-id>.jsonl
+jsonlPath: "~/.claude/projects"
+
+# ─── Polling ─────────────────────────────────────────────────────────────────
+# How often (seconds) to scan for new/updated session files.
+pollInterval: 5.0
+
+# ─── Outbox (offline resilience) ───────────────────────────────────────────────
+# File path for persisting messages when the server is unreachable.
+outboxPath: "~/.claude/sync-daemon-outbox.jsonl"

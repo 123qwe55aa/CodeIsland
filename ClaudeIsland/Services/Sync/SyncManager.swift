@@ -21,7 +21,7 @@ final class SyncManager: ObservableObject {
     @Published private(set) var isEnabled = false
     @Published private(set) var connectionState: ServerConnectionState = .disconnected
 
-    private(set) var connection: ServerConnection?
+    var connection: ServerConnection?
     private var relay: MessageRelay?
     private var rpcExecutor: RPCExecutor?
     private var capabilityTimer: Timer?
@@ -30,36 +30,6 @@ final class SyncManager: ObservableObject {
     /// Re-publishes the underlying ServerConnection.shortCode so SwiftUI views
     /// (PairPhoneView) can observe it via SyncManager directly.
     @Published private(set) var shortCode: String?
-
-    /// Text the phone injected into a Claude session via cmux. Used so MessageRelay
-    /// can skip re-uploading the same text when it re-appears in the JSONL (dedup).
-    /// Keyed by Claude session UUID; entries expire after 60s.
-    private var recentlyInjected: [String: [(text: String, at: Date)]] = [:]
-
-    func recordPhoneInjection(claudeUuid: String, text: String) {
-        pruneInjections()
-        recentlyInjected[claudeUuid, default: []].append((text, Date()))
-    }
-
-    /// Returns true and removes the entry if `text` was recently injected from phone.
-    func consumePhoneInjection(claudeUuid: String, text: String) -> Bool {
-        pruneInjections()
-        guard var list = recentlyInjected[claudeUuid] else { return false }
-        if let idx = list.firstIndex(where: { $0.text == text }) {
-            list.remove(at: idx)
-            recentlyInjected[claudeUuid] = list.isEmpty ? nil : list
-            return true
-        }
-        return false
-    }
-
-    private func pruneInjections() {
-        let cutoff = Date().addingTimeInterval(-60)
-        for (k, v) in recentlyInjected {
-            let kept = v.filter { $0.at > cutoff }
-            recentlyInjected[k] = kept.isEmpty ? nil : kept
-        }
-    }
 
     /// The server URL to connect to. Stored in UserDefaults.
     var serverUrl: String? {
@@ -125,6 +95,12 @@ final class SyncManager: ObservableObject {
             let rpc = RPCExecutor()
             self.rpcExecutor = rpc
 
+            // Restore persisted session mappings before starting relay
+            let savedMappings = await MessageOutbox.shared.allMappings
+            for (localId, serverId) in savedMappings {
+                relay.restoreServerSessionId(localId: localId, serverId: serverId)
+            }
+
             // Delay relay start to give socket time to connect
             Task { @MainActor in
                 // Wait up to 5 seconds for socket connection
@@ -135,6 +111,7 @@ final class SyncManager: ObservableObject {
 
                 if conn.isConnected {
                     relay.startRelaying()
+                    relay.scheduleOutboxDrain()
                     Self.logger.info("Relay started after socket connected")
                 } else {
                     Self.logger.warning("Socket did not connect in time, starting relay anyway")
@@ -162,6 +139,9 @@ final class SyncManager: ObservableObject {
             // Periodically upload known project paths so the phone can pick from
             // recent projects when launching a session.
             scheduleProjectUploads()
+
+            // Fetch remote sessions from server for display in the instances list.
+            await ServerSessionMonitor.shared.fetchNow()
         } catch {
             connectionState = .error(error.localizedDescription)
             Self.logger.error("Sync connection failed: \(error)")
@@ -243,8 +223,8 @@ final class SyncManager: ObservableObject {
             if images.isEmpty {
                 Self.logger.warning("No images could be downloaded — falling back to text-only")
             } else {
-                let ok = await TerminalWriter.shared.sendImagesAndText(images: images, text: parsedText, claudeUuid: targetUuid, cwd: cwd, livePid: livePid, cmuxWorkspaceId: cmuxWsId, cmuxSurfaceId: cmuxSurfId, terminalApp: trackedSession?.terminalApp)
-                if ok { recordPhoneInjection(claudeUuid: targetUuid, text: parsedText) }
+let ok = await TerminalWriter.shared.sendImagesAndText(images: images, text: parsedText, claudeUuid: targetUuid, cwd: cwd, livePid: livePid)
+                if ok { await MessageOutbox.shared.recordInjection(claudeUuid: targetUuid, text: parsedText) }
                 Self.logger.info("Phone message with \(images.count) image(s) → terminal: \(ok ? "success" : "failed")")
                 return
             }
@@ -256,15 +236,10 @@ final class SyncManager: ObservableObject {
         // command, wait, snapshot again, diff, and ship the new lines back as a
         // synthetic terminal_output message.
         if parsedText.hasPrefix("/"), let targetUuid {
-            let output = await TerminalWriter.shared.sendSlashCommandAndCaptureOutput(parsedText, claudeUuid: targetUuid, cwd: cwd, livePid: livePid, cmuxWorkspaceId: cmuxWsId, cmuxSurfaceId: cmuxSurfId, terminalApp: trackedSession?.terminalApp)
-            if let output {
-                // Command was sent and output captured (may be empty if no visible change)
-                recordPhoneInjection(claudeUuid: targetUuid, text: parsedText)
-                if !output.isEmpty {
-                    await sendTerminalOutputMessage(sessionId: serverSessionId, command: parsedText, output: output)
-                }
-                Self.logger.info("Phone slash command /\(parsedText.dropFirst().prefix(20)) → captured")
-                return
+let output = await TerminalWriter.shared.sendSlashCommandAndCaptureOutput(parsedText, claudeUuid: targetUuid, cwd: cwd, livePid: livePid)
+            await MessageOutbox.shared.recordInjection(claudeUuid: targetUuid, text: parsedText)
+            if let output, !output.isEmpty {
+                await sendTerminalOutputMessage(sessionId: serverSessionId, command: parsedText, output: output)
             }
             // cmux target not found — fall through to plain text path for non-cmux terminals
             Self.logger.info("Slash command /\(parsedText.dropFirst().prefix(20)) capture unavailable, sending as text")
@@ -282,7 +257,7 @@ final class SyncManager: ObservableObject {
                 cmuxSurfaceId: cmuxSurfId,
                 terminalApp: termApp
             )
-            if sent { recordPhoneInjection(claudeUuid: uuid, text: parsedText) }
+            if sent { await MessageOutbox.shared.recordInjection(claudeUuid: uuid, text: parsedText) }
             Self.logger.info("Phone message → terminal (uuid=\(uuid.prefix(8), privacy: .public) pid=\(livePid?.description ?? "nil", privacy: .public)): \(sent ? "success" : "failed")")
             return
         }

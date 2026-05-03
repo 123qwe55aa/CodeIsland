@@ -11,11 +11,10 @@
 		CL00000100000003AABBCC03 /* CodeLightProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = CL00000200000004AABBCC04 /* CodeLightProtocol */; };
 		CL00000100000005AABBCC05 /* CodeLightCrypto in Frameworks */ = {isa = PBXBuildFile; productRef = CL00000200000006AABBCC06 /* CodeLightCrypto */; };
 		FDA49F7D2EE11E3C00F9612E /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = FD33FD722EDF32D7002A6548 /* Markdown */; };
-		SP00000100000001SPARKLE01 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = SP00000200000002SPARKLE02 /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		FD33FD5D2EDF32D7002A6548 /* Mio Island.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Mio Island.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		FD33FD5D2EDF32D7002A6548 /* Code Island.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Code Island.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -48,7 +47,6 @@
 				CL00000100000001AABBCC01 /* SocketIO in Frameworks */,
 				CL00000100000003AABBCC03 /* CodeLightProtocol in Frameworks */,
 				CL00000100000005AABBCC05 /* CodeLightCrypto in Frameworks */,
-				SP00000100000001SPARKLE01 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -66,7 +64,7 @@
 		FD33FD5E2EDF32D7002A6548 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				FD33FD5D2EDF32D7002A6548 /* Mio Island.app */,
+				FD33FD5D2EDF32D7002A6548 /* Code Island.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -95,10 +93,9 @@
 				CL00000200000002AABBCC02 /* SocketIO */,
 				CL00000200000004AABBCC04 /* CodeLightProtocol */,
 				CL00000200000006AABBCC06 /* CodeLightCrypto */,
-				SP00000200000002SPARKLE02 /* Sparkle */,
 			);
 			productName = ClaudeIsland;
-			productReference = FD33FD5D2EDF32D7002A6548 /* Mio Island.app */;
+			productReference = FD33FD5D2EDF32D7002A6548 /* Code Island.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -121,7 +118,6 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
-				"zh-Hans",
 				Base,
 			);
 			mainGroup = FD33FD542EDF32D7002A6548;
@@ -131,7 +127,6 @@
 				CL00000300000007AABBCC07 /* XCRemoteSwiftPackageReference "socket" */,
 				CL00000300000008AABBCC08 /* XCLocalSwiftPackageReference "../CodeLight/packages/CodeLightProtocol" */,
 				CL00000300000009AABBCC09 /* XCLocalSwiftPackageReference "../CodeLight/packages/CodeLightCrypto" */,
-				SP00000300000003SPARKLE03 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FD33FD5E2EDF32D7002A6548 /* Products */;
@@ -292,8 +287,8 @@
 				CODE_SIGN_ENTITLEMENTS = ClaudeIsland/Resources/ClaudeIsland.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 36;
-				DEVELOPMENT_TEAM = 4GT6V2DUTF;
+				CURRENT_PROJECT_VERSION = 15;
+				DEVELOPMENT_TEAM = B2W3XU354L;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -306,9 +301,9 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.3.0;
+				MARKETING_VERSION = 1.11.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.codeisland.app;
-				PRODUCT_NAME = "Mio Island";
+				PRODUCT_NAME = "Code Island";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -327,8 +322,8 @@
 				CODE_SIGN_ENTITLEMENTS = ClaudeIsland/Resources/ClaudeIsland.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 36;
-				DEVELOPMENT_TEAM = 4GT6V2DUTF;
+				CURRENT_PROJECT_VERSION = 15;
+				DEVELOPMENT_TEAM = B2W3XU354L;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -341,9 +336,9 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.3.0;
+				MARKETING_VERSION = 1.11.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.codeisland.app;
-				PRODUCT_NAME = "Mio Island";
+				PRODUCT_NAME = "Code Island";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -405,14 +400,6 @@
 				minimumVersion = 0.5.0;
 			};
 		};
-		SP00000300000003SPARKLE03 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/sparkle-project/Sparkle";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.6.0;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -435,11 +422,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = FD33FD712EDF32D7002A6548 /* XCRemoteSwiftPackageReference "swift-markdown" */;
 			productName = Markdown;
-		};
-		SP00000200000002SPARKLE02 /* Sparkle */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = SP00000300000003SPARKLE03 /* XCRemoteSwiftPackageReference "Sparkle" */;
-			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -434,6 +434,7 @@ enum L10n {
     // MARK: - Chat view
 
     static var loadingMessages: String { tr("Loading messages...", "加载消息中...") }
+    static var loading: String { tr("Loading...", "加载中...") }
     static var noMessages: String { tr("No messages", "暂无消息") }
     static var processing: String { tr("Processing", "处理中") }
     static var claudeNeedsInput: String { tr("Claude Code needs your input", "Claude Code 需要你的输入") }
@@ -495,6 +496,15 @@ enum L10n {
     // MARK: - Notch view status text
 
     static func approveWhat(_ tool: String) -> String { tr("\(L10n.approve) \(tool)?", "\(L10n.approve) \(tool)?") }
+
+    // MARK: - Remote / server sessions
+
+    static var serverSessions: String { tr("Server Sessions", "服务端会话") }
+    static var noServerSessions: String { tr("No server sessions", "暂无服务端会话") }
+    static var serverSessionError: String { tr("Failed to load server sessions", "加载服务端会话失败") }
+    static var retry: String { tr("Retry", "重试") }
+    static var remote: String { tr("Remote", "远程") }
+    static var serverActive: String { tr("Active", "活跃") }
 
     // MARK: - Smart interactions
 

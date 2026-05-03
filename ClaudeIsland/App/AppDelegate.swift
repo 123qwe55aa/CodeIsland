@@ -1,9 +1,11 @@
 import AppKit
 import SwiftUI
 import UserNotifications
+import os.log
 
 @MainActor class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     private var windowManager: WindowManager?
+    private static let logger = Logger(subsystem: "com.codeisland", category: "AppDelegate")
     private var screenObserver: ScreenObserver?
 
     static var shared: AppDelegate?
@@ -38,6 +40,7 @@ import UserNotifications
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Self.logger.info("Application did finish launching")
         if !ensureSingleInstance() {
             NSApplication.shared.terminate(nil)
             return
@@ -84,19 +87,24 @@ import UserNotifications
         // Initialize CodeLight sync (connects to server if configured)
         _ = SyncManager.shared
 
-        // Stats are now handled by the external stats plugin.
-        // AnalyticsCollector.shared.start() is called by the plugin's activate().
+// Compute "yesterday" activity report and schedule midnight refresh.
+        // Runs off the main thread inside the collector; launch is instant.
+        Task { @MainActor in
+            AnalyticsCollector.shared.start()
+        }
 
-        // Ad-hoc 签名升级后 TCC 权限失效检测：已配对 CodeLight 的用户才会收到通知，
-        // 只在权限"从有变没"时发通知，避免反复打扰。
-        PermissionAlertNotifier.installAndCheck()
+        // Start session monitoring (includes TCP relay for remote hooks)
+        sessionMonitor.startMonitoring()
     }
+
+    private let sessionMonitor = ClaudeSessionMonitor()
 
     private func handleScreenChange() {
         _ = windowManager?.setupNotchWindow()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        sessionMonitor.stopMonitoring()
         screenObserver = nil
     }
 

@@ -21,16 +21,7 @@ struct ClaudeInstancesView: View {
     @State private var showBuddyCard: Bool = false
     @AppStorage("usePixelCat") private var usePixelCat: Bool = false
     @ObservedObject private var notchStore: NotchCustomizationStore = .shared
-    @ObservedObject private var hiddenStore: HiddenProjectsStore = .shared
-    /// Pending "hide group" confirmation: set when user clicks the move button.
-    @State private var pendingHide: PendingHide? = nil
-    private var theme: ThemeResolver { ThemeResolver(theme: notchStore.customization.theme) }
-
-    private struct PendingHide: Identifiable {
-        let id = UUID()
-        let cwd: String
-        let name: String
-    }
+@ObservedObject private var serverMonitor: ServerSessionMonitor = .shared
 
     var body: some View {
         if sessionMonitor.instances.isEmpty {
@@ -135,6 +126,111 @@ struct ClaudeInstancesView: View {
             }
         }
     }
+
+    // MARK: - Server Sessions Section
+
+    /// Shows server sessions from CodeServer in a collapsible sub-section below the main list.
+    /// Uses serverMonitor.loadState to render idle / loading / error / loaded states.
+    @ViewBuilder
+    private var serverSessionsSection: some View {
+        switch serverMonitor.loadState {
+        case .idle:
+            EmptyView()
+
+        case .loading:
+            HStack(spacing: 4) {
+                ProgressView()
+                    .controlSize(.mini)
+                    .notchSecondaryForeground()
+                Text(L10n.loading)
+                    .notchFont(10)
+                    .notchSecondaryForeground()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+
+        case .error(let message):
+            HStack(spacing: 4) {
+                Image(systemName: "exclamationmark.triangle")
+                    .notchFont(10)
+                    .foregroundColor(.orange)
+                Text(message)
+                    .notchFont(10)
+                    .notchSecondaryForeground()
+                    .lineLimit(1)
+                Spacer()
+                Button {
+                    Task { await serverMonitor.fetchNow() }
+                } label: {
+                    Text(L10n.retry)
+                        .notchFont(9)
+                        .notchSecondaryForeground()
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+
+        case .loaded(let sessions):
+            if sessions.isEmpty {
+                Text(L10n.noServerSessions)
+                    .notchFont(10)
+                    .notchSecondaryForeground()
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+            } else {
+                ForEach(sessions) { session in
+                    ServerSessionRow(session: session)
+                }
+            }
+        }
+    }
+
+    // MARK: - Server Session Row
+
+/// A single remote session row for server sessions from CodeServer.
+struct ServerSessionRow: View {
+    let session: RemoteSessionState
+
+    private static let remoteColor = Color(red: 0.55, green: 0.78, blue: 1.0)
+
+    var body: some View {
+        HStack(spacing: 6) {
+            // Remote indicator dot
+            Circle()
+                .fill(session.isActive ? Self.remoteColor : Color.white.opacity(0.2))
+                .frame(width: 5, height: 5)
+                .shadow(color: Self.remoteColor.opacity(session.isActive ? 0.5 : 0), radius: session.isActive ? 2 : 0)
+
+            // Title
+            Text(session.metadata.title.isEmpty ? session.projectName : session.metadata.title)
+                .notchFont(10, weight: .medium)
+                .notchSecondaryForeground()
+                .lineLimit(1)
+
+            Spacer()
+
+            // "Remote" badge
+            Text(L10n.remote)
+                .notchFont(7, weight: .semibold)
+                .foregroundColor(Self.remoteColor)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+                .background(
+                    Capsule().fill(Self.remoteColor.opacity(0.12))
+                )
+
+            // Stale warning
+            if session.isStale {
+                Image(systemName: "clock")
+                    .notchFont(8)
+                    .foregroundColor(.orange.opacity(0.6))
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+    }
+}
 
     // MARK: - Buddy Card
 
@@ -450,6 +546,9 @@ struct ClaudeInstancesView: View {
                         .padding(.top, 8)
                         .padding(.bottom, 4)
                 }
+
+                // CodeServer sessions section (shown at bottom of list)
+                serverSessionsSection
             }
             .padding(.horizontal, 2)
             .padding(.vertical, 2)
@@ -492,6 +591,9 @@ struct ClaudeInstancesView: View {
                         }
                     }
                 }
+
+                // CodeServer sessions section (shown at bottom of list)
+                serverSessionsSection
             }
             .padding(.horizontal, 4)
             .padding(.vertical, 2)

@@ -1,0 +1,40 @@
+wing: codeisland
+rooms:
+- name: documentation
+  description: Files from docs/
+  keywords:
+  - documentation
+  - docs
+- name: claudeisland.xcodeproj
+  description: Files from ClaudeIsland.xcodeproj/
+  keywords:
+  - claudeisland.xcodeproj
+  - claudeisland.xcodeproj
+- name: scripts
+  description: Files from scripts/
+  keywords:
+  - scripts
+  - scripts
+- name: marketing
+  description: Files from marketing/
+  keywords:
+  - marketing
+  - marketing
+- name: claudeisland
+  description: Files from ClaudeIsland/
+  keywords:
+  - claudeisland
+  - claudeisland
+- name: frontend
+  description: Files from UI/
+  keywords:
+  - frontend
+  - ui
+- name: backend
+  description: Files from Models/
+  keywords:
+  - backend
+  - models
+- name: general
+  description: Files that don't fit other rooms
+  keywords: []
