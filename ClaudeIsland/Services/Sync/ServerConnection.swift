@@ -87,6 +87,12 @@ final class ServerConnection: ObservableObject {
             signature: signature.base64EncodedString()
         )
 
+        guard !serverUrl.isEmpty else {
+            Self.logger.warning("Cannot authenticate: empty server URL")
+            state = .error("No server URL configured")
+            return
+        }
+
         let url = URL(string: "\(serverUrl)/v1/auth")!
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
