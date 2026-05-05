@@ -24,6 +24,11 @@ struct ClaudeInstancesView: View {
     @ObservedObject private var hiddenStore: HiddenProjectsStore = .shared
     /// Pending "hide group" confirmation: set when user clicks the move button.
     @State private var pendingHide: PendingHide? = nil
+    @ObservedObject private var serverMonitor: ServerSessionMonitor = .shared
+    @State private var remoteChatSession: RemoteSessionState?
+    @State private var remoteMessages: [ChatMessage] = []
+    @State private var isLoadingRemoteMessages = false
+
     private var theme: ThemeResolver { ThemeResolver(theme: notchStore.customization.theme) }
 
     private struct PendingHide: Identifiable {
@@ -33,10 +38,12 @@ struct ClaudeInstancesView: View {
     }
 
     var body: some View {
-        if sessionMonitor.instances.isEmpty {
-            emptyState
-        } else {
-            ZStack(alignment: .bottomTrailing) {
+        ZStack {
+            if sessionMonitor.instances.isEmpty && serverMonitor.sessions.isEmpty {
+                emptyState
+            } else {
+                Group {  // wrapper so modifiers can be applied
+                    ZStack(alignment: .bottomTrailing) {
                 VStack(spacing: 0) {
                     // Top bar: session count + settings
                     HStack {
@@ -110,29 +117,41 @@ struct ClaudeInstancesView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
-            }
-            .onReceive(sessionMonitor.$instances) { instances in
-                viewModel.sessionCount = instances.count
-                viewModel.activeSessionCount = instances.filter {
-                    $0.phase != .idle && $0.phase != .ended
-                }.count
-            }
-            // Gate the Anthropic usage API poll loop on the Usage Bar
-            // preference. Previously RateLimitMonitor.shared polled the API
-            // unconditionally on init, so users who disabled the bar still
-            // hit api.anthropic.com every 5 minutes. See issue #50.
-            .onAppear {
-                if notchStore.customization.showUsageBar {
-                    rateLimitMonitor.start()
+                    }  // close ZStack(alignment: .bottomTrailing)
+                }  // close Group
+                .onReceive(sessionMonitor.$instances) { instances in
+                    viewModel.sessionCount = instances.count
+                    viewModel.activeSessionCount = instances.filter {
+                        $0.phase != .idle && $0.phase != .ended
+                    }.count
                 }
-            }
-            .onChange(of: notchStore.customization.showUsageBar) { _, newValue in
-                if newValue {
-                    rateLimitMonitor.start()
-                } else {
-                    rateLimitMonitor.stop()
+                // Gate the Anthropic usage API poll loop on the Usage Bar
+                // preference. Previously RateLimitMonitor.shared polled the API
+                // unconditionally on init, so users who disabled the bar still
+                // hit api.anthropic.com every 5 minutes. See issue #50.
+                .onAppear {
+                    if notchStore.customization.showUsageBar {
+                        rateLimitMonitor.start()
+                    }
                 }
-            }
+                .onChange(of: notchStore.customization.showUsageBar) { _, newValue in
+                    if newValue {
+                        rateLimitMonitor.start()
+                    } else {
+                        rateLimitMonitor.stop()
+                    }
+                }
+            }  // close else
+        }
+
+        // Remote chat overlay
+        if let session = remoteChatSession {
+            RemoteChatSheet(
+                session: session,
+                messages: $remoteMessages,
+                isLoading: $isLoadingRemoteMessages,
+                onDismiss: { _ in remoteChatSession = nil }
+            )
         }
     }
 
@@ -452,6 +471,22 @@ struct ClaudeInstancesView: View {
                 }
 
                 // CodeServer sessions section (shown at bottom of list)
+                if !serverMonitor.sessions.isEmpty {
+                    VStack(spacing: 4) {
+                        HStack {
+                            Text("Remote Sessions")
+                                .notchFont(9, weight: .medium)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.top, 6)
+                        ForEach(serverMonitor.sessions) { session in
+                            RemoteInstanceRow(session: session, onTap: { openRemoteChat(session) })
+                                .padding(.horizontal, 8)
+                        }
+                    }
+                }
             }
             .padding(.horizontal, 2)
             .padding(.vertical, 2)
@@ -533,6 +568,20 @@ struct ClaudeInstancesView: View {
         Task {
             await TerminalJumper.shared.jump(to: session)
             await MainActor.run { viewModel.notchClose() }
+        }
+    }
+
+    private func openRemoteChat(_ session: RemoteSessionState) {
+        remoteChatSession = session
+        isLoadingRemoteMessages = true
+        remoteMessages = []
+        Task {
+            guard let conn = SyncManager.shared.connection else { return }
+            let msgs = await conn.fetchSessionMessages(sessionId: session.sessionId)
+            await MainActor.run {
+                remoteMessages = msgs
+                isLoadingRemoteMessages = false
+            }
         }
     }
 
@@ -1772,5 +1821,127 @@ struct CodexUsageStatsBar: View {
         let remaining = resetAt.timeIntervalSinceNow
         if remaining <= 0 { return "Codex \(label): \(pct)% (reset)" }
         return "Codex \(label): \(pct)% (resets in \(formatResetShort(remaining)))"
+    }
+}
+
+// MARK: - Remote Instance Row
+
+struct RemoteInstanceRow: View {
+    let session: RemoteSessionState
+    var onTap: () -> Void
+
+    private static let remoteColor = Color(red: 0.4, green: 0.91, blue: 0.98)
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "globe")
+                .notchFont(12)
+                .foregroundStyle(Self.remoteColor)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(session.displayTitle)
+                    .notchFont(11)
+                    .lineLimit(1)
+
+                HStack(spacing: 4) {
+                    Text(session.projectName)
+                        .notchFont(9)
+                        .opacity(0.6)
+                        .lineLimit(1)
+
+                    if session.isStale {
+                        Image(systemName: "clock")
+                            .notchFont(8)
+                            .foregroundStyle(.orange.opacity(0.8))
+                    }
+                }
+            }
+
+            Spacer()
+
+            if session.isActive {
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 6, height: 6)
+            } else {
+                Circle()
+                    .fill(Color.white.opacity(0.2))
+                    .frame(width: 6, height: 6)
+            }
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.white.opacity(0.04))
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { onTap() }
+    }
+}
+
+// MARK: - Remote Chat Sheet
+
+struct RemoteChatSheet: View {
+    let session: RemoteSessionState
+    @Binding var messages: [ChatMessage]
+    @Binding var isLoading: Bool
+    var onDismiss: (Bool) -> Void
+
+    private static let remoteColor = Color(red: 0.55, green: 0.78, blue: 1.0)
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(session.displayTitle)
+                    .notchFont(13, weight: .semibold)
+                Spacer()
+                Button { onDismiss(true) } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .notchFont(12)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+
+            Divider()
+
+            if isLoading {
+                Spacer()
+                ProgressView()
+                Spacer()
+            } else if messages.isEmpty {
+                Spacer()
+                Text("No messages")
+                    .notchFont(11)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 6) {
+                        ForEach(messages) { msg in
+                            HStack(alignment: .top, spacing: 6) {
+                                Text(msg.role == .user ? "You" : "Claude")
+                                    .notchFont(9, weight: .semibold)
+                                    .frame(width: 50, alignment: .leading)
+                                    .foregroundStyle(msg.role == .user ? .blue : .green)
+                                Text(msg.textContent)
+                                    .notchFont(10)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .padding(.horizontal, 8)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+            }
+        }
+        .frame(minWidth: 320, minHeight: 300)
+        .background(Color(nsColor: .windowBackgroundColor).opacity(0.95))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .shadow(radius: 20)
+        .padding(20)
     }
 }

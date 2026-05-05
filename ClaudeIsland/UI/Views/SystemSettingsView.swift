@@ -798,7 +798,6 @@ private struct InfoRow: View {
 // MARK: - General tab
 
 private struct GeneralTab: View {
-    @State private var hooksInstalled = HookInstaller.isInstalled()
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @ObservedObject private var codexGate = CodexFeatureGate.shared
 
@@ -824,23 +823,6 @@ private struct GeneralTab: View {
                                 launchAtLogin = true
                             }
                         } catch {}
-                    }
-                }
-                SettingRow(
-                    icon: "arrow.triangle.2.circlepath",
-                    label: L10n.hooks,
-                    sublabel: L10n.isChinese
-                        ? "拦截与注入 Claude CLI 生命周期"
-                        : "Intercept and instrument the Claude CLI lifecycle"
-                ) {
-                    IOSToggle(isOn: hooksInstalled) {
-                        if hooksInstalled {
-                            HookInstaller.uninstall()
-                            hooksInstalled = false
-                        } else {
-                            HookInstaller.installIfNeeded()
-                            hooksInstalled = true
-                        }
                     }
                 }
                 SettingRow(
@@ -1300,7 +1282,25 @@ private struct CodeLightTab: View {
 private struct AdvancedTab: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HookDiagnosticsView()
+            // Hook diagnostics removed — hook system was deleted
+            SettingsCard {
+                HStack(spacing: 10) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 16))
+                        .foregroundColor(Theme.subtle)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Hooks")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.detailText.opacity(0.9))
+                        Text(L10n.isChinese
+                             ? "Hook 系统已从 CodeIsland 中移除"
+                             : "Hook system removed from CodeIsland")
+                            .font(.system(size: 10))
+                            .foregroundColor(Theme.subtle)
+                    }
+                    Spacer()
+                }
+            }
 
             SettingsCard(title: L10n.clearEndedSessions) {
                 Button {

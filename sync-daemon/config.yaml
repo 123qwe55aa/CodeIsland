@@ -1,20 +1,6 @@
-# ─── Device ────────────────────────────────────────────────────────────────────
-# Unique ID for this machine (used as JWT subject / session tag prefix).
-# For sync-daemon running on the SAME machine as Claude Code, this is the
-# daemon's own deviceId. It authenticates with a shared JWT secret, not Ed25519.
-deviceId: "bdd06b490f2d4c96842c498c5d321349"
-
-# ─── Mac shortCode (for session ownership) ────────────────────────────────────
-# The Mac's 6-char shortCode (registered by Mac CodeIsland on first launch).
-# sync-daemon looks this device up on startup and uses the Mac's deviceId as
-# the JWT subject so sessions appear under the Mac (not the daemon's deviceId).
-# Obtained from Mac CodeIsland: Settings → Pair with iPhone → shortCode shown.
-# Env: SYNC_MAC_SHORT_CODE
-macShortCode: "2JF3CM"
-
-# ─── Auth ─────────────────────────────────────────────────────────────────────
-# JWT secret shared between this machine and the Mio server.
-jwtSecret: "3a662d86367b9d6dcf0d8d6ca4b63748a37017a13a8fa5334817bdb952eef610"
+# Ed25519 seed file — base64-encoded 32-byte seed (same identity as CodeIsland Mac app)
+# This replaces the old deviceId + jwtSecret approach.
+ed25519SeedFile: "~/.claude/sync-daemon-seed.b64"
 
 # ─── Server ──────────────────────────────────────────────────────────────────
 serverUrl: "https://mio-server-production.up.railway.app"
@@ -27,3 +13,7 @@ pollInterval: 5.0
 
 # ─── Outbox (offline resilience) ────────────────────────────────────────────────
 outboxPath: "~/.claude/sync-daemon-outbox.jsonl"
+
+# ─── Cache ──────────────────────────────────────────────────────────────────
+cachePath: "~/.claude/sync-daemon-sessions.json"
+watcherStatePath: "~/.claude/sync-daemon-watcher-state.json"

@@ -46,10 +46,6 @@ import os.log
             return
         }
 
-        HookInstaller.installIfNeeded()
-        CodexFeatureGate.shared.onLaunch()
-        logHookHealth()
-
         // Request notification permission — .accessory policy blocks the system dialog,
         // so temporarily switch to .regular when permission is not yet determined.
         let center = UNUserNotificationCenter.current()
@@ -86,19 +82,13 @@ import os.log
 
         // Initialize CodeLight sync (connects to server if configured)
         _ = SyncManager.shared
-
-        // Start session monitoring (includes TCP relay for remote hooks)
-        sessionMonitor.startMonitoring()
     }
-
-    private let sessionMonitor = ClaudeSessionMonitor()
 
     private func handleScreenChange() {
         _ = windowManager?.setupNotchWindow()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        sessionMonitor.stopMonitoring()
         screenObserver = nil
     }
 
@@ -122,15 +112,6 @@ import os.log
             PermissionAlertNotifier.handleResponse(actionIdentifier: response.actionIdentifier)
         }
         completionHandler()
-    }
-
-    private func logHookHealth() {
-        let reports = [HookHealthCheck.checkClaude(), HookHealthCheck.checkCodex()]
-        for report in reports where !report.isHealthy {
-            for issue in report.errors {
-                NSLog("[CodeIsland] Hook health (\(report.agent)): \(issue)")
-            }
-        }
     }
 
     private func ensureSingleInstance() -> Bool {

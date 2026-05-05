@@ -5,6 +5,10 @@
 //  MainActor wrapper around SessionStore for UI binding.
 //  Publishes SessionState arrays for SwiftUI observation.
 //
+//  Hook-related functionality removed: no longer receives events from
+//  HookSocketServer. Session events now come from JSONL parsing and
+//  other internal sources.
+//
 
 import AppKit
 import Combine
@@ -13,6 +17,7 @@ import os.log
 
 @MainActor
 class ClaudeSessionMonitor: ObservableObject {
+    static let shared = ClaudeSessionMonitor()
     nonisolated static let logger = Logger(subsystem: "com.codeisland", category: "SessionMonitor")
     @Published var instances: [SessionState] = []
     @Published var pendingInstances: [SessionState] = []
@@ -33,101 +38,10 @@ class ClaudeSessionMonitor: ObservableObject {
     // MARK: - Monitoring Lifecycle
 
     func startMonitoring() {
-        HookSocketServer.shared.start(
-            onEvent: { event in
-                Task {
-                    await SessionStore.shared.process(.hookReceived(event))
-                }
-
-                if event.sessionPhase == .processing {
-                    Task { @MainActor in
-                        InterruptWatcherManager.shared.startWatching(
-                            sessionId: event.sessionId,
-                            cwd: event.cwd
-                        )
-                    }
-                }
-
-                if event.status == "ended" {
-                    Task { @MainActor in
-                        InterruptWatcherManager.shared.stopWatching(sessionId: event.sessionId)
-                    }
-                }
-
-                if event.event == "Stop" {
-                    HookSocketServer.shared.cancelPendingPermissions(sessionId: event.sessionId)
-                }
-
-                if event.event == "PostToolUse", let toolUseId = event.toolUseId {
-                    HookSocketServer.shared.cancelPendingPermission(toolUseId: toolUseId)
-                }
-            },
-            onPermissionFailure: { sessionId, toolUseId in
-                Task {
-                    await SessionStore.shared.process(
-                        .permissionSocketFailed(sessionId: sessionId, toolUseId: toolUseId)
-                    )
-                }
-            }
-        )
         Task { await SessionStore.shared.startZombieScan() }
-
-        // Start TCP relay server for SSH connections
-        startRelayTCPServer()
-    }
-
-    func startRelayTCPServer() {
-        Task {
-            let psk = await SSHHostRegistry.shared.getOrCreatePSK()
-            HookSocketServer.shared.startTCPServer(
-                port: 9871,
-                psk: psk,
-                onEvent: { event in
-                    let start = Date()
-                    Task {
-                        await SessionStore.shared.process(.hookReceived(event))
-                        let elapsed = Date().timeIntervalSince(start) * 1000
-                        if elapsed > 50 {
-                            Self.logger.warning("Event processing took \(elapsed, format: .fixed(precision: 1))ms: \(event.event, privacy: .public) sid=\(event.sessionId.prefix(8), privacy: .public)")
-                        }
-                    }
-
-                    if event.sessionPhase == .processing {
-                        Task { @MainActor in
-                            InterruptWatcherManager.shared.startWatching(
-                                sessionId: event.sessionId,
-                                cwd: event.cwd
-                            )
-                        }
-                    }
-
-                    if event.status == "ended" {
-                        Task { @MainActor in
-                            InterruptWatcherManager.shared.stopWatching(sessionId: event.sessionId)
-                        }
-                    }
-
-                    if event.event == "Stop" {
-                        HookSocketServer.shared.cancelPendingPermissions(sessionId: event.sessionId)
-                    }
-
-                    if event.event == "PostToolUse", let toolUseId = event.toolUseId {
-                        HookSocketServer.shared.cancelPendingPermission(toolUseId: toolUseId)
-                    }
-                },
-                onCommand: { action, target, text in
-                    Self.logger.debug("Relay command: \(action) target: \(target)")
-                }
-            )
-            await MainActor.run {
-                Self.logger.info("TCP relay server started on port 9871")
-            }
-        }
     }
 
     func stopMonitoring() {
-        HookSocketServer.shared.stop()
-        HookSocketServer.shared.stopTCPServer()
         Task { await SessionStore.shared.stopZombieScan() }
     }
 
@@ -144,12 +58,6 @@ class ClaudeSessionMonitor: ObservableObject {
                   let permission = session.activePermission else {
                 return
             }
-
-            HookSocketServer.shared.respondToPermission(
-                toolUseId: permission.toolUseId,
-                decision: "allow"
-            )
-
             await SessionStore.shared.process(
                 .permissionApproved(sessionId: sessionId, toolUseId: permission.toolUseId)
             )
@@ -162,13 +70,6 @@ class ClaudeSessionMonitor: ObservableObject {
                   let permission = session.activePermission else {
                 return
             }
-
-            HookSocketServer.shared.respondToPermission(
-                toolUseId: permission.toolUseId,
-                decision: "deny",
-                reason: reason
-            )
-
             await SessionStore.shared.process(
                 .permissionDenied(sessionId: sessionId, toolUseId: permission.toolUseId, reason: reason)
             )
@@ -183,7 +84,6 @@ class ClaudeSessionMonitor: ObservableObject {
                   let questionCtx = session.phase.questionContext else {
                 return
             }
-
             await SessionStore.shared.process(
                 .questionSkipped(sessionId: sessionId, toolUseId: questionCtx.toolUseId)
             )

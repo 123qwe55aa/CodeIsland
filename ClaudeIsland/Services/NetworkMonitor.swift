@@ -9,6 +9,7 @@ import Foundation
 import Combine
 import Network
 import os.log
+import os.log
 
 @MainActor
 final class NetworkMonitor: ObservableObject {
@@ -123,7 +124,7 @@ final class NetworkMonitor: ObservableObject {
         let updateCmd = "sed -i.bak 's/^RELAY_HOST=.*/RELAY_HOST=\(newIP)/' ~/.codeisland/relay.conf && pkill -HUP -f codeisland-ssh-relay.py || true"
 
         let (result, stderr) = await Task.detached {
-            HookInstaller.runSSHCommandWithOutput(
+            runSSHCommandWithOutput(
                 args: sshArgs + [remoteUserHost, updateCmd],
                 timeout: 30
             )

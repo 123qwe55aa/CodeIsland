@@ -1049,7 +1049,6 @@ actor SessionStore {
         if changed {
             for sessionId in zombieSessionIds {
                 Task { @MainActor in
-                    HookSocketServer.shared.cancelPendingPermissions(sessionId: sessionId)
                     InterruptWatcherManager.shared.stopWatching(sessionId: sessionId)
                 }
             }
@@ -1071,9 +1070,8 @@ actor SessionStore {
     private func processSessionEnd(sessionId: String) async {
         sessions.removeValue(forKey: sessionId)
         cancelPendingSync(sessionId: sessionId)
-        // Clean up watchers and pending permissions (mirrors zombie cleanup)
+        // Clean up watchers (mirrors zombie cleanup)
         Task { @MainActor in
-            HookSocketServer.shared.cancelPendingPermissions(sessionId: sessionId)
             InterruptWatcherManager.shared.stopWatching(sessionId: sessionId)
         }
     }

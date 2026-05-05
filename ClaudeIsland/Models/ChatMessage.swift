@@ -84,3 +84,25 @@ struct ToolUseBlock: Equatable {
         return input.values.first.map { String($0.prefix(50)) } ?? ""
     }
 }
+
+extension ChatMessage {
+    init?(from dict: [String: Any]) {
+        guard let id = dict["id"] as? String ?? dict["messageId"] as? String,
+              let roleStr = dict["role"] as? String,
+              let role = ChatRole(rawValue: roleStr) else { return nil }
+        self.id = id
+        self.role = role
+        if let tsStr = dict["timestamp"] as? String ?? dict["createdAt"] as? String {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            self.timestamp = formatter.date(from: tsStr) ?? Date()
+        } else {
+            self.timestamp = Date()
+        }
+        var blocks: [MessageBlock] = []
+        if let text = dict["content"] as? String ?? dict["text"] as? String, !text.isEmpty {
+            blocks.append(.text(text))
+        }
+        self.content = blocks
+    }
+}

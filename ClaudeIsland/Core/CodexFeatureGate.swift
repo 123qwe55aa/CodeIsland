@@ -29,17 +29,14 @@ final class CodexFeatureGate: ObservableObject {
     /// Called once from AppDelegate.applicationDidFinishLaunching.
     func onLaunch() {
         guard isEnabled else { return }
-        CodexHookInstaller.installIfNeeded()
         CodexUsageMonitor.shared.start()
     }
 
     private func didEnable() {
-        CodexHookInstaller.installIfNeeded()
         CodexUsageMonitor.shared.start()
     }
 
     private func didDisable() {
-        CodexHookInstaller.uninstall()
         CodexUsageMonitor.shared.stop()
     }
 }

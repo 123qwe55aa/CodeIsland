@@ -270,3 +270,245 @@ extension SessionEvent: CustomStringConvertible {
         }
     }
 }
+
+// MARK: - HookEvent (moved from HookSocketServer.swift)
+
+/// Event received from Claude Code hooks
+struct HookEvent: Codable, Sendable {
+    let sessionId: String
+    let cwd: String
+    let event: String
+    let status: String
+    let pid: Int?
+    let tty: String?
+    let tool: String?
+    let toolInput: [String: AnyCodable]?
+    let toolUseId: String?
+    let notificationType: String?
+    let message: String?
+    let remoteHost: String?
+    let remoteUser: String?
+    let remoteTmuxTarget: String?
+    let lastToolName: String?
+    let conversationSummary: String?
+    let conversationFirstMessage: String?
+    let conversationLatestMessage: String?
+    let conversationLastTool: String?
+    let source: String?
+    let transcriptPath: String?
+    let terminalApp: String?
+    let shouldSync: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case sessionId = "session_id"
+        case cwd, event, status, pid, tty, tool
+        case toolInput = "tool_input"
+        case toolUseId = "tool_use_id"
+        case notificationType = "notification_type"
+        case message
+        case remoteHost = "remote_host"
+        case remoteUser = "remote_user"
+        case remoteTmuxTarget = "remote_tmux_target"
+        case lastToolName = "last_tool_name"
+        case conversationSummary = "conversation_summary"
+        case conversationFirstMessage = "conversation_first_message"
+        case conversationLatestMessage = "conversation_latest_message"
+        case conversationLastTool = "conversation_last_tool"
+        case hookEventName = "hook_event_name"
+        case sessionPhase = "session_phase"
+        case source
+        case transcriptPath = "transcript_path"
+        case terminalApp = "terminal_app"
+        case shouldSync = "should_sync_file"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessionId = try container.decodeIfPresent(String.self, forKey: .sessionId) ?? ""
+        cwd = try container.decodeIfPresent(String.self, forKey: .cwd) ?? ""
+        event = try container.decodeIfPresent(String.self, forKey: .event)
+            ?? container.decodeIfPresent(String.self, forKey: .hookEventName)
+            ?? ""
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
+        pid = try container.decodeIfPresent(Int.self, forKey: .pid)
+        tty = try container.decodeIfPresent(String.self, forKey: .tty)
+        tool = try container.decodeIfPresent(String.self, forKey: .tool)
+        toolInput = try container.decodeIfPresent([String: AnyCodable].self, forKey: .toolInput)
+        toolUseId = try container.decodeIfPresent(String.self, forKey: .toolUseId)
+        notificationType = try container.decodeIfPresent(String.self, forKey: .notificationType)
+        message = try container.decodeIfPresent(String.self, forKey: .message)
+        remoteHost = try container.decodeIfPresent(String.self, forKey: .remoteHost)
+        remoteUser = try container.decodeIfPresent(String.self, forKey: .remoteUser)
+        remoteTmuxTarget = try container.decodeIfPresent(String.self, forKey: .remoteTmuxTarget)
+        lastToolName = try container.decodeIfPresent(String.self, forKey: .lastToolName)
+        conversationSummary = try container.decodeIfPresent(String.self, forKey: .conversationSummary)
+        conversationFirstMessage = try container.decodeIfPresent(String.self, forKey: .conversationFirstMessage)
+        conversationLatestMessage = try container.decodeIfPresent(String.self, forKey: .conversationLatestMessage)
+        conversationLastTool = try container.decodeIfPresent(String.self, forKey: .conversationLastTool)
+        source = try container.decodeIfPresent(String.self, forKey: .source)
+        transcriptPath = try container.decodeIfPresent(String.self, forKey: .transcriptPath)
+        terminalApp = try container.decodeIfPresent(String.self, forKey: .terminalApp)
+        shouldSync = try container.decodeIfPresent(Bool.self, forKey: .shouldSync)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(sessionId, forKey: .sessionId)
+        try container.encode(cwd, forKey: .cwd)
+        try container.encode(event, forKey: .event)
+        try container.encode(status, forKey: .status)
+        try container.encodeIfPresent(pid, forKey: .pid)
+        try container.encodeIfPresent(tty, forKey: .tty)
+        try container.encodeIfPresent(tool, forKey: .tool)
+        try container.encodeIfPresent(toolInput, forKey: .toolInput)
+        try container.encodeIfPresent(toolUseId, forKey: .toolUseId)
+        try container.encodeIfPresent(notificationType, forKey: .notificationType)
+        try container.encodeIfPresent(message, forKey: .message)
+        try container.encodeIfPresent(remoteHost, forKey: .remoteHost)
+        try container.encodeIfPresent(remoteUser, forKey: .remoteUser)
+        try container.encodeIfPresent(remoteTmuxTarget, forKey: .remoteTmuxTarget)
+        try container.encodeIfPresent(lastToolName, forKey: .lastToolName)
+        try container.encodeIfPresent(conversationSummary, forKey: .conversationSummary)
+        try container.encodeIfPresent(conversationFirstMessage, forKey: .conversationFirstMessage)
+        try container.encodeIfPresent(conversationLatestMessage, forKey: .conversationLatestMessage)
+        try container.encodeIfPresent(conversationLastTool, forKey: .conversationLastTool)
+        try container.encodeIfPresent(source, forKey: .source)
+        try container.encodeIfPresent(transcriptPath, forKey: .transcriptPath)
+        try container.encodeIfPresent(terminalApp, forKey: .terminalApp)
+        try container.encodeIfPresent(shouldSync, forKey: .shouldSync)
+    }
+
+    init(sessionId: String, cwd: String, event: String, status: String, pid: Int?, tty: String?, tool: String?, toolInput: [String: AnyCodable]?, toolUseId: String?, notificationType: String?, message: String?, remoteHost: String? = nil, remoteUser: String? = nil, remoteTmuxTarget: String? = nil, lastToolName: String? = nil, conversationSummary: String? = nil, conversationFirstMessage: String? = nil, conversationLatestMessage: String? = nil, conversationLastTool: String? = nil, source: String? = nil, transcriptPath: String? = nil, terminalApp: String? = nil, shouldSync: Bool? = nil) {
+        self.sessionId = sessionId
+        self.cwd = cwd
+        self.event = event
+        self.status = status
+        self.pid = pid
+        self.tty = tty
+        self.tool = tool
+        self.toolInput = toolInput
+        self.toolUseId = toolUseId
+        self.notificationType = notificationType
+        self.message = message
+        self.remoteHost = remoteHost
+        self.remoteUser = remoteUser
+        self.remoteTmuxTarget = remoteTmuxTarget
+        self.lastToolName = lastToolName
+        self.conversationSummary = conversationSummary
+        self.conversationFirstMessage = conversationFirstMessage
+        self.conversationLatestMessage = conversationLatestMessage
+        self.conversationLastTool = conversationLastTool
+        self.source = source
+        self.transcriptPath = transcriptPath
+        self.terminalApp = terminalApp
+        self.shouldSync = shouldSync
+    }
+
+    var sessionPhase: SessionPhase {
+        if event == "PreCompact" { return .compacting }
+        switch status {
+        case "waiting_for_approval":
+            return .waitingForApproval(PermissionContext(
+                toolUseId: toolUseId ?? "",
+                toolName: tool ?? "unknown",
+                toolInput: toolInput,
+                receivedAt: Date()
+            ))
+        case "waiting_for_input": return .waitingForInput
+        case "running_tool", "processing", "starting": return .processing
+        case "compacting": return .compacting
+        default: return .idle
+        }
+    }
+
+    nonisolated var expectsResponse: Bool {
+        event == "PermissionRequest" && status == "waiting_for_approval"
+    }
+}
+
+/// Response to send back to the hook
+struct HookResponse: Codable {
+    let decision: String
+    let reason: String?
+}
+
+/// Pending permission request waiting for user decision
+struct PendingPermission: Sendable {
+    let sessionId: String
+    let toolUseId: String
+    let clientSocket: Int32
+    let event: HookEvent
+    let receivedAt: Date
+}
+
+/// Incoming message from SSH relay (has extra SSH metadata)
+struct RelayMessage: Codable, Sendable {
+    let type: String
+    let psk: String?
+    let version: String?
+    let event: HookEvent?
+    let remoteHost: String?
+    let remoteUser: String?
+    let remoteTmuxTarget: String?
+    let action: String?
+    let target: String?
+    let text: String?
+    let result: [String: AnyCodable]?
+    let id: String?
+
+    enum CodingKeys: String, CodingKey {
+        case type, psk, version, event, remoteHost, remoteUser, remoteTmuxTarget
+        case action, target, text, result, id
+    }
+}
+
+/// Relay command for sending text to remote tmux
+struct RelayCommand: Codable {
+    let type: String
+    let action: String
+    let target: String
+    let text: String?
+    let id: String?
+}
+
+/// Type-erasing codable wrapper for heterogeneous values
+struct AnyCodable: Codable, @unchecked Sendable {
+    nonisolated(unsafe) let value: Any
+
+    init(_ value: Any) { self.value = value }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            value = NSNull()
+        } else if let bool = try? container.decode(Bool.self) {
+            value = bool
+        } else if let int = try? container.decode(Int.self) {
+            value = int
+        } else if let double = try? container.decode(Double.self) {
+            value = double
+        } else if let string = try? container.decode(String.self) {
+            value = string
+        } else if let array = try? container.decode([AnyCodable].self) {
+            value = array.map { $0.value }
+        } else if let dict = try? container.decode([String: AnyCodable].self) {
+            value = dict.mapValues { $0.value }
+        } else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Cannot decode value")
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch value {
+        case is NSNull: try container.encodeNil()
+        case let bool as Bool: try container.encode(bool)
+        case let int as Int: try container.encode(int)
+        case let double as Double: try container.encode(double)
+        case let string as String: try container.encode(string)
+        case let array as [Any]: try container.encode(array.map { AnyCodable($0) })
+        case let dict as [String: Any]: try container.encode(dict.mapValues { AnyCodable($0) })
+        default: throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: [], debugDescription: "Cannot encode value"))
+        }
+    }
+}

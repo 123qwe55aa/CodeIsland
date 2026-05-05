@@ -49,6 +49,19 @@ final class ServerConnection: ObservableObject {
     private var socket: SocketIOClient?
     private var crypto: MessageCrypto?
 
+    /// Dedicated session for sync HTTP calls. Uses a short timeout and respects
+    /// system proxy so Railway is reachable from regions that require a proxy tunnel.
+    private let syncSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 15
+        config.timeoutIntervalForResource = 45
+        config.waitsForConnectivity = false
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        // Respect macOS system proxy (used by 小火箭 etc.)
+        config.connectionProxyDictionary = [:]
+        return URLSession(configuration: config)
+    }()
+
     /// Called when an RPC request arrives from the phone
     var onRpcCall: ((String, String, @escaping (String) -> Void) -> Void)?
 
@@ -64,7 +77,7 @@ final class ServerConnection: ObservableObject {
     var isConnected: Bool { state == .connected }
 
     init(serverUrl: String, keyManager: KeyManager = KeyManager(serviceName: "com.codeisland.keys")) {
-        self.serverUrl = serverUrl
+        self.serverUrl = serverUrl.trimmingCharacters(in: .whitespacesAndNewlines)
         self.keyManager = keyManager
         self.token = keyManager.loadToken(forServer: serverUrl)
     }
@@ -73,6 +86,8 @@ final class ServerConnection: ObservableObject {
 
     func authenticate() async throws {
         state = .authenticating
+        print("[Sync] authenticate: starting")
+        fflush(stdout)
 
         let _ = try keyManager.getOrCreateIdentityKey()
 
@@ -90,31 +105,50 @@ final class ServerConnection: ObservableObject {
         guard !serverUrl.isEmpty else {
             Self.logger.warning("Cannot authenticate: empty server URL")
             state = .error("No server URL configured")
+            print("[Sync] authenticate: FAIL empty serverUrl")
+            fflush(stdout)
             return
         }
 
-        let url = URL(string: "\(serverUrl)/v1/auth")!
+        guard let url = URL(string: "\(serverUrl)/v1/auth") else {
+            Self.logger.warning("Cannot authenticate: invalid server URL: \(self.serverUrl)")
+            state = .error("Invalid server URL")
+            print("[Sync] authenticate: FAIL invalid URL: \(self.serverUrl)")
+            fflush(stdout)
+            return
+        }
+        print("[Sync] authenticate: calling \(url.absoluteString)")
+        fflush(stdout)
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.httpBody = try JSONEncoder().encode(request)
 
-        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        let (data, response) = try await syncSession.data(for: urlRequest)
+        print("[Sync] authenticate: got response, status=\((response as? HTTPURLResponse)?.statusCode ?? -1)")
+        fflush(stdout)
 
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             state = .error("Auth failed")
+            print("[Sync] authenticate: FAIL http error")
+            fflush(stdout)
             return
         }
 
         let authResponse = try JSONDecoder().decode(AuthResponse.self, from: data)
-        if let t = authResponse.token {
-            self.token = t
-            self.deviceId = authResponse.deviceId
-            try keyManager.storeToken(t, forServer: serverUrl)
-            Self.logger.info("Authenticated with \(self.serverUrl)")
-        } else {
+        guard let ed25519Token = authResponse.token, let macDeviceId = authResponse.deviceId else {
             state = .error("No token received")
+            print("[Sync] authenticate: FAIL no token in response")
+            fflush(stdout)
+            return
         }
+
+        self.token = ed25519Token
+        self.deviceId = macDeviceId
+        try keyManager.storeToken(ed25519Token, forServer: serverUrl)
+        Self.logger.info("Authenticated with /v1/auth token, deviceId=\(macDeviceId)")
+        print("[Sync] authenticate: SUCCESS, token=\(ed25519Token.prefix(8))... deviceId=\(macDeviceId)")
+        fflush(stdout)
     }
 
     // MARK: - Socket.io Connection
@@ -127,7 +161,11 @@ final class ServerConnection: ObservableObject {
 
         state = .connecting
 
-        let url = URL(string: serverUrl)!
+        guard let url = URL(string: serverUrl) else {
+            Self.logger.warning("Cannot connect: invalid server URL: \(self.serverUrl, privacy: .public)")
+            state = .error("Invalid server URL")
+            return
+        }
         // Reconnect backoff: was capped at 5s with no jitter. After a network
         // blip every Mac in the field would all hit the server in lockstep
         // every 5s — a small thundering herd. Cap at 30s + use the library's
@@ -274,20 +312,22 @@ final class ServerConnection: ObservableObject {
     func uploadCapabilities(_ snapshot: CapabilitySnapshot) async {
         guard let token else { return }
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
-        var request = URLRequest(url: URL(string: "\(serverUrl)/v1/capabilities")!)
+        guard let url = URL(string: "\(serverUrl)/v1/capabilities") else { return }
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = data
-        _ = try? await URLSession.shared.data(for: request)
+        _ = try? await syncSession.data(for: request)
     }
 
     /// Download a blob by ID. Returns (data, mime) or throws.
     func downloadBlob(blobId: String) async throws -> (Data, String) {
         guard let token else { throw URLError(.userAuthenticationRequired) }
-        var request = URLRequest(url: URL(string: "\(serverUrl)/v1/blobs/\(blobId)")!)
+        guard let url = URL(string: "\(serverUrl)/v1/blobs/\(blobId)") else { throw URLError(.badURL) }
+        var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await syncSession.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw NSError(domain: "CodeIsland.Blob", code: (response as? HTTPURLResponse)?.statusCode ?? -1,
                           userInfo: [NSLocalizedDescriptionKey: "Blob download failed"])
@@ -333,7 +373,8 @@ final class ServerConnection: ObservableObject {
         }
 
         do {
-            let res = try await getJSON(path: "/v1/sessions/mine")
+            let res = try await getJSON(path: "/v1/sessions")
+            print("[fetchSessions] raw response: \(res)")
             guard let array = res["sessions"] as? [[String: Any]] else {
                 Self.logger.warning("fetchSessions: unexpected response shape — no 'sessions' key")
                 return .success([])
@@ -382,44 +423,91 @@ final class ServerConnection: ObservableObject {
         }
     }
 
+    /// Fetch message history for a session from the server.
+    func fetchSessionMessages(sessionId: String) async -> [ChatMessage] {
+        do {
+            let res = try await getJSON(path: "/v1/sessions/\(sessionId)/messages")
+            if let array = res["messages"] as? [[String: Any]] {
+                print("[fetchSessionMessages] response keys: \(res.keys), count: \(array.count)")
+                let msgs = array.compactMap { ChatMessage(from: $0) }
+                print("[fetchSessionMessages] parsed \(msgs.count) messages")
+                return msgs
+            } else {
+                print("[fetchSessionMessages] no 'messages' key in response: \(res)")
+            }
+        } catch {
+            Self.logger.error("fetchSessionMessages failed: \(error.localizedDescription)")
+        }
+        return []
+    }
+
     // MARK: - HTTP Helpers
 
     private func postJSON(path: String, body: [String: Any]) async throws -> [String: Any] {
-        let url = URL(string: "\(serverUrl)\(path)")!
+        Self.logger.warning("postJSON: serverUrl=|\(self.serverUrl)| path=|\(path)|")
+        let combined = "\(serverUrl)\(path)"
+        Self.logger.warning("postJSON: combined=|\(combined)|")
+        guard let url = URL(string: combined) else {
+            Self.logger.warning("postJSON: invalid URL: serverUrl=\(self.serverUrl, privacy: .public), path=\(path, privacy: .public)")
+            throw URLError(.badURL)
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await syncSession.data(for: request)
         return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
     }
 
     private func putJSON(path: String, body: [String: Any]) async throws {
-        let url = URL(string: "\(serverUrl)\(path)")!
+        guard let url = URL(string: "\(serverUrl)\(path)") else {
+            Self.logger.warning("putJSON: invalid URL")
+            throw URLError(.badURL)
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        _ = try await URLSession.shared.data(for: request)
+        _ = try await syncSession.data(for: request)
     }
 
     private func getJSON(path: String) async throws -> [String: Any] {
-        let url = URL(string: "\(serverUrl)\(path)")!
+        Self.logger.warning("getJSON: serverUrl=\(self.serverUrl, privacy: .public), path=\(path, privacy: .public)")
+        guard let url = URL(string: "\(serverUrl)\(path)") else {
+            Self.logger.warning("getJSON: invalid URL")
+            throw URLError(.badURL)
+        }
         var request = URLRequest(url: url)
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
-        let (data, _) = try await URLSession.shared.data(for: request)
-        return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+        print("[getJSON] request.url=\(url.absoluteString) token prefix=\(token?.prefix(8) ?? "nil")")
+        fflush(stdout)
+        do {
+            let (data, response) = try await syncSession.data(for: request)
+            print("[getJSON] response status=\((response as? HTTPURLResponse)?.statusCode ?? -1) data length=\(data.count)")
+            fflush(stdout)
+            let result = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+            print("[getJSON] parsed keys=\(result.keys)")
+            fflush(stdout)
+            return result
+        } catch {
+            print("[getJSON] ERROR: \(error)")
+            fflush(stdout)
+            throw error
+        }
     }
 
     private func deleteRequest(path: String) async throws {
-        let url = URL(string: "\(serverUrl)\(path)")!
+        guard let url = URL(string: "\(serverUrl)\(path)") else {
+            Self.logger.warning("deleteRequest: invalid URL")
+            throw URLError(.badURL)
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await syncSession.data(for: request)
         if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
             throw URLError(.badServerResponse)
         }
@@ -430,6 +518,9 @@ final class ServerConnection: ObservableObject {
     /// Register this Mac with the server. Lazy-allocates and returns a permanent shortCode.
     /// Idempotent — call on every launch.
     func registerDevice(name: String, kind: String) async {
+        Self.logger.warning("registerDevice: serverUrl=\(self.serverUrl, privacy: .public), name=\(name, privacy: .public), kind=\(kind, privacy: .public)")
+        let body = ["name": name, "kind": kind]
+        Self.logger.warning("registerDevice body: \(body, privacy: .public)")
         do {
             let res = try await postJSON(path: "/v1/devices/me", body: ["name": name, "kind": kind])
             if let code = res["shortCode"] as? String {
@@ -474,10 +565,10 @@ final class ServerConnection: ObservableObject {
     /// Fetch all devices linked to this Mac.
     func fetchLinkedDevices() async -> [LinkedDeviceInfo] {
         do {
-            let url = URL(string: "\(serverUrl)/v1/pairing/links")!
+            guard let url = URL(string: "\(serverUrl)/v1/pairing/links") else { return [] }
             var request = URLRequest(url: url)
             if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, _) = try await syncSession.data(for: request)
             guard let array = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
             return array.compactMap { dict in
                 guard let id = dict["deviceId"] as? String,

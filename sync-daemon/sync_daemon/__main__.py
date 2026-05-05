@@ -29,7 +29,7 @@ from typing import Optional
 
 import yaml
 
-from .http_client import HttpClient, NetworkError
+from .http_client import HttpClient, Ed25519UnavailableError, NetworkError
 from .jsonl_watcher import JSONLWatcher, SessionCallback
 from .message_parser import ParsedMessage
 from .session_mgr import SessionManager
@@ -55,11 +55,9 @@ def _configure_logging(verbose: bool = False) -> None:
 
 @dataclass
 class Config:
-    device_id: str
-    jwt_secret: str
     server_url: str
     jsonl_path: str
-    mac_short_code: str = ""
+    ed25519_seed_file: str = "~/.claude/sync-daemon-seed.b64"
     poll_interval: float = 5.0
     outbox_path: str = "~/.claude/sync-daemon-outbox.jsonl"
     cache_path: str = "~/.claude/sync-daemon-sessions.json"
@@ -82,21 +80,13 @@ def load_config(path: Optional[str]) -> Config:
         env_key = env or key.upper()
         return os.environ.get(env_key) or cfg.get(key) or ""
 
-    device_id = get("deviceId", "SYNC_DEVICE_ID")
-    if not device_id:
-        sys.exit("ERROR: deviceId is required (set SYNC_DEVICE_ID env var or in config)")
-
-    jwt_secret = get("jwtSecret", "SYNC_JWT_SECRET")
-    if not jwt_secret:
-        sys.exit("ERROR: jwtSecret is required (set SYNC_JWT_SECRET env var or in config)")
-
     server_url = get("serverUrl", "SYNC_SERVER_URL")
     if not server_url:
         sys.exit("ERROR: serverUrl is required (set SYNC_SERVER_URL env var or in config)")
 
     jsonl_path = get("jsonlPath", "SYNC_JSONL_PATH") or "~/.claude/projects"
 
-    mac_short_code = get("macShortCode", "SYNC_MAC_SHORT_CODE")
+    ed25519_seed_file = get("ed25519SeedFile", "SYNC_ED25519_SEED_FILE") or "~/.claude/sync-daemon-seed.b64"
 
     poll_interval = float(
         os.environ.get("SYNC_POLL_INTERVAL")
@@ -109,11 +99,9 @@ def load_config(path: Optional[str]) -> Config:
     )
 
     return Config(
-        device_id=device_id,
-        jwt_secret=jwt_secret,
         server_url=server_url,
         jsonl_path=jsonl_path,
-        mac_short_code=mac_short_code,
+        ed25519_seed_file=ed25519_seed_file,
         poll_interval=poll_interval,
         outbox_path=outbox_path,
         cache_path=cache_path,
@@ -263,36 +251,25 @@ def main() -> None:
     _configure_logging(verbose=args.verbose)
 
     config = load_config(args.config)
-    logger.info("sync-daemon starting — server=%s deviceId=%s",
-                config.server_url, config.device_id[:8])
 
-    # ── HTTP client ──────────────────────────────────────────────────────────
+    # ── HTTP client (Ed25519 auth, seed from file or Keychain) ───────────────────
     http = HttpClient(
         base_url=config.server_url,
-        device_id=config.device_id,
-        jwt_secret=config.jwt_secret,
         outbox_path=config.outbox_path,
+        ed25519_seed_file=config.ed25519_seed_file,
     )
 
-    # ── Resolve Mac's deviceId if shortCode is configured ────────────────────
-    # When macShortCode is set, we use the Mac's deviceId (not our own) in JWT
-    # claims so sessions appear under the Mac on the server, letting the iPhone
-    # session list show them.
-    session_device_id: str | None = None
-    if config.mac_short_code:
-        logger.info("Looking up Mac deviceId by shortCode: %s", config.mac_short_code)
-        session_device_id = http.fetch_mac_device_id(config.mac_short_code)
-        if session_device_id:
-            logger.info("Mac deviceId resolved: %s", session_device_id[:8])
-            http.session_device_id = session_device_id
-        else:
-            logger.warning(
-                "Could not resolve Mac deviceId for shortCode '%s' — "
-                "sessions will be created under daemon's own deviceId",
-                config.mac_short_code,
-            )
-    else:
-        logger.info("No macShortCode configured — sessions will use daemon deviceId")
+    # ── Authenticate with Ed25519 ─────────────────────────────────────────────
+    try:
+        http.authenticate()
+        logger.info("sync-daemon starting — server=%s deviceId=%s",
+                    config.server_url, (http.device_id or "???")[:12])
+    except Ed25519UnavailableError as exc:
+        logger.error("Ed25519 seed not available: %s", exc)
+        logger.error("sync-daemon must run on the same Mac as CodeIsland with an unlocked Keychain.")
+        sys.exit(1)
+    except NetworkError as exc:
+        logger.warning("Could not authenticate to server: %s — will retry on first request", exc)
 
     # ── Session manager ───────────────────────────────────────────────────────
     session_mgr = SessionManager(http, cache_path=config.cache_path)

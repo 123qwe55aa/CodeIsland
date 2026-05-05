@@ -2,18 +2,20 @@
 http_client.py
 Lightweight HTTP client for the Mio Server REST API.
 
-Authenticated via a signed JWT (HS256) using the shared ``jwtSecret``.
+Authenticated via Ed25519 challenge-response (same as CodeIsland Mac app).
+The 32-byte Ed25519 seed is stored in macOS Keychain on the Mac that runs
+CodeIsland. sync-daemon reads it from the same Keychain so both use the
+same deviceId.
 """
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import logging
 import os
 import stat
 import time
+import uuid
 from base64 import urlsafe_b64encode
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -37,6 +39,11 @@ class HttpError(Exception):
 
 class NetworkError(Exception):
     """Raised when the server cannot be reached at all."""
+    pass
+
+
+class Ed25519UnavailableError(Exception):
+    """Raised when Ed25519 seed cannot be loaded from Keychain."""
     pass
 
 
@@ -67,49 +74,79 @@ class SessionInfo:
     last_active_at: str | None = None
 
 
-# ── JWT helpers ────────────────────────────────────────────────────────────────
+# ── Ed25519 helpers ──────────────────────────────────────────────────────────
 
 def _b64url(data: bytes | str) -> str:
-    """URL-safe base64 encoder without padding."""
+    """Standard base64 encoder (no URL-safe, no strip) — matches Swift's base64EncodedString()."""
     if isinstance(data, str):
         data = data.encode("utf-8")
-    return urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+    import base64
+    return base64.b64encode(data).decode("ascii")
 
 
-def _sign_payload(payload: str, secret: str) -> str:
+def _load_ed25519_seed_from_keychain() -> bytes:
     """
-    Create an HS256 JWT signature for *payload* using *secret*.
-    The header is fixed: ``{"alg":"HS256","typ":"JWT"}``.
-    """
-    header_b64 = _b64url(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")))
-    payload_b64 = _b64url(payload)
-    unsigned = f"{header_b64}.{payload_b64}"
-    sig = hmac.new(
-        secret.encode("utf-8"),
-        unsigned.encode("utf-8"),
-        hashlib.sha256,
-    ).digest()
-    return f"{unsigned}.{_b64url(sig)}"
+    Read the Ed25519 seed from macOS Keychain.
+    Same service/account as CodeIsland: service=com.codeisland.keys,
+    account=com.codeisland.keys.ed25519-seed.v1
 
-
-def _make_jwt(device_id: str, secret: str, issued_at: int) -> str:
+    Raises Ed25519UnavailableError if the seed cannot be read.
     """
-    Build a minimal HS256 JWT.
+    import subprocess
 
-    Claims
-    ------
-    sub : str
-        Device ID (subject).
-    iat : int
-        Issued-at timestamp (seconds since epoch).
-    exp : int
-        Expiry timestamp (1 hour after iat).
-    """
-    payload = json.dumps(
-        {"deviceId": device_id, "iat": issued_at, "exp": issued_at + 3600},
-        separators=(",", ":"),
+    result = subprocess.run(
+        [
+            "security", "find-generic-password",
+            "-s", "com.codeisland.keys",
+            "-a", "com.codeisland.keys.ed25519-seed.v1",
+            "-w",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=5,
     )
-    return _sign_payload(payload, secret)
+    if result.returncode == 0 and result.stdout.strip():
+        seed_b64 = result.stdout.strip()
+        from base64 import b64decode
+        return b64decode(seed_b64)
+
+    raise Ed25519UnavailableError(
+        f"Could not read Ed25519 seed from Keychain (exit {result.returncode}). "
+        "Is sync-daemon running on the same Mac as CodeIsland with an unlocked Keychain?"
+    )
+
+
+def _load_ed25519_seed_from_file(path: str) -> bytes:
+    """Load Ed25519 seed from a file (base64-encoded)."""
+    from base64 import b64decode
+    with open(path, "r", encoding="utf-8") as f:
+        return b64decode(f.read().strip())
+
+
+def load_ed25519_seed(seed_file: str | None = None) -> bytes:
+    """Load Ed25519 seed from file (preferred) or Keychain."""
+    if seed_file:
+        expanded = os.path.expanduser(seed_file)
+        if os.path.exists(expanded):
+            return _load_ed25519_seed_from_file(expanded)
+    try:
+        return _load_ed25519_seed_from_keychain()
+    except Ed25519UnavailableError:
+        raise Ed25519UnavailableError(
+            f"Ed25519 seed not found at {os.path.expanduser(seed_file) if seed_file else '~/.claude/sync-daemon-seed.b64'} "
+            "and Keychain access failed. Place base64-encoded seed at "
+            "the path specified by --ed25519-seed-file, or run on the Mac with Keychain access."
+        )
+
+
+def _sign_with_ed25519_seed(seed: bytes, message: bytes) -> bytes:
+    """Sign a message with an Ed25519 seed using cryptography library."""
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
+
+    private_key = Ed25519PrivateKey.from_private_bytes(seed)
+    signature = private_key.sign(message)
+    return signature
 
 
 # ── HTTP Client ───────────────────────────────────────────────────────────────
@@ -119,35 +156,22 @@ class HttpClient:
     """
     Typed HTTP client for the Mio Server API.
 
-    Parameters
-    ----------
-    base_url : str
-        Root of the API (e.g. ``https://api.example.com``).
-    device_id : str
-        This machine's unique identifier (used as JWT subject).
-    jwt_secret : str
-        Shared secret for HMAC-SHA256 JWT signing.
-    outbox_path : str
-        Path to the durable outbox JSONL file.
-    timeout : float
-        HTTP request timeout in seconds (default 30).
-    retry_attempts : int
-        Number of retries on network errors (default 3).
-    retry_delay : float
-        Initial delay between retries in seconds (default 2.0, doubles each retry).
+    Uses Ed25519 challenge-response authentication (same as CodeIsland Mac app).
+    The seed is loaded from macOS Keychain so both sync-daemon and CodeIsland
+    share the same deviceId on the server.
     """
 
     base_url: str
-    device_id: str
-    jwt_secret: str
-    # Optional: deviceId to use in JWT claims for session operations.
-    # When set (e.g. to Mac's deviceId resolved via shortCode), sessions are
-    # created under that device rather than this daemon's own deviceId.
-    session_device_id: str | None = None
     outbox_path: str = f"~/.claude/sync-daemon-outbox-{os.getpid()}.jsonl"
+    ed25519_seed_file: str = "~/.claude/sync-daemon-seed.b64"
     timeout: float = 30.0
     retry_attempts: int = 3
     retry_delay: float = 2.0
+
+    # Auth state — set during authenticate()
+    _ed25519_seed: bytes | None = field(default=None, repr=False)
+    _auth_token: str | None = None
+    _device_id: str | None = None
 
     # In-memory working set (subset of on-disk outbox, reloaded on init)
     _outbox: list[dict] = field(default_factory=list)
@@ -156,22 +180,76 @@ class HttpClient:
         self._outbox_path = Path(os.path.expanduser(self.outbox_path))
         self._outbox_file_existed_before = self._outbox_path.exists()
         self._load_outbox()
-        # If the file was reloaded (entries were read from disk), mark it as
-        # "pre-existing" so that drain failure preserves _outbox (it was a
-        # legitimately loaded crash-recovery file, not a stale leftover).
         if self._outbox:
             self._outbox_file_existed_before = True
         self._load_outbox()
 
+    # ── Ed25519 Auth ─────────────────────────────────────────────────────────
+
+    def authenticate(self) -> None:
+        """
+        Perform Ed25519 challenge-response auth with the server.
+        Sets _auth_token and _device_id on success.
+        Raises NetworkError or Ed25519UnavailableError on failure.
+        """
+        if self._auth_token is not None:
+            return  # already authenticated
+
+        # Load seed from file or Keychain
+        if self._ed25519_seed is None:
+            seed_path = os.path.expanduser(self.ed25519_seed_file)
+            self._ed25519_seed = load_ed25519_seed(seed_path if os.path.exists(seed_path) else None)
+            logger.info("Loaded Ed25519 seed from %s", seed_path if os.path.exists(seed_path) else "Keychain")
+
+        # Generate challenge and sign it
+        challenge = uuid.uuid4().hex
+        challenge_bytes = challenge.encode("utf-8")
+        signature = _sign_with_ed25519_seed(self._ed25519_seed, challenge_bytes)
+
+        # Build public key from seed
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        private_key = Ed25519PrivateKey.from_private_bytes(self._ed25519_seed)
+        public_key_bytes = private_key.public_key().public_bytes(
+            encoding=Encoding.Raw, format=PublicFormat.Raw
+        )
+        public_key_b64 = _b64url(public_key_bytes)
+
+        # Call POST /v1/auth
+        body = {
+            "publicKey": public_key_b64,
+            "challenge": _b64url(challenge_bytes),
+            "signature": _b64url(signature),
+        }
+
+        import urllib.parse
+        url = f"{self.base_url}/v1/auth"
+        resp = requests.post(url, json=body, timeout=self.timeout)
+        if resp.status_code != 200:
+            raise NetworkError(f"Auth failed: HTTP {resp.status_code} {resp.text[:200]}")
+
+        data = resp.json()
+        token = data.get("token")
+        device_id = data.get("deviceId")
+        if not token or not device_id:
+            raise NetworkError(f"Auth response missing token or deviceId: {resp.text[:200]}")
+
+        self._auth_token = token
+        self._device_id = device_id
+        logger.info("Ed25519 auth succeeded, deviceId=%s", device_id[:12])
+
+    @property
+    def device_id(self) -> str | None:
+        """Current deviceId (available after authenticate())."""
+        return self._device_id
+
     # ── Auth header ─────────────────────────────────────────────────────────
 
     def _auth_headers(self) -> dict[str, str]:
-        iat = int(time.time())
-        # Use session_device_id if set (e.g. Mac's deviceId), otherwise own deviceId
-        effective_id = self.session_device_id or self.device_id
-        token = _make_jwt(effective_id, self.jwt_secret, iat)
+        if self._auth_token is None:
+            self.authenticate()
         return {
-            "Authorization": f"Bearer {token}",
+            "Authorization": f"Bearer {self._auth_token}",
             "Content-Type": "application/json",
         }
 
@@ -227,28 +305,6 @@ class HttpClient:
             f"Could not reach {url} after {self.retry_attempts} attempts"
         ) from last_exc
 
-    def fetch_mac_device_id(self, short_code: str) -> str | None:
-        """
-        Call GET /v1/devices/mac-by-code/:shortCode to resolve the Mac's deviceId.
-        Used when macShortCode is configured so sync-daemon creates sessions
-        under the Mac's deviceId (not its own), enabling the iPhone session list
-        to show these sessions.
-
-        Returns the Mac's deviceId string, or None on error / not found.
-        """
-        import urllib.parse
-        path = f"/v1/devices/mac-by-code/{urllib.parse.quote(short_code.upper().strip())}"
-        try:
-            resp = self._request("GET", path)
-            if resp.ok:
-                data = resp.json()
-                return data.get("deviceId")
-            logger.warning("fetch_mac_device_id(%s) returned %s", short_code, resp.status_code)
-            return None
-        except Exception as exc:
-            logger.warning("fetch_mac_device_id(%s) failed: %s", short_code, exc)
-            return None
-
     # ── Sessions ────────────────────────────────────────────────────────────
 
     def create_session(self, tag: str, metadata: str) -> SessionInfo:
@@ -286,12 +342,15 @@ class HttpClient:
 
     def fetch_sessions(self) -> list[SessionInfo]:
         """
-        GET /v1/sessions/mine — fetch all sessions owned by this device.
+        GET /v1/sessions — fetch all sessions owned by this device.
 
         Returns a list of SessionInfo objects. Empty list on network or HTTP error.
         """
         try:
-            resp = self._request("GET", "/v1/sessions/mine")
+            # Ensure authenticated first
+            if self._auth_token is None:
+                self.authenticate()
+            resp = self._request("GET", "/v1/sessions")
             if not resp.ok:
                 logger.warning("fetch_sessions returned %s", resp.status_code)
                 return []
@@ -365,11 +424,7 @@ class HttpClient:
                         continue
                     try:
                         entry = json.loads(line)
-                        # Validate required fields
                         if all(k in entry for k in ("sessionId", "localId", "content")):
-                            # Skip entries already in _outbox to avoid accumulating
-                            # stale entries when multiple HttpClient instances share
-                            # the same default outbox path across tests in one process.
                             already_loaded = any(
                                 e.get("localId") == entry.get("localId")
                                 for e in self._outbox
@@ -401,9 +456,6 @@ class HttpClient:
     def _rewrite_outbox(self, remaining: list[dict]) -> None:
         """
         Rewrite the on-disk outbox with *remaining* entries.
-        Called after successful delivery to delete confirmed entries.
-        When *remaining* is empty an empty file is written so that
-        has_outbox_pending (which checks file content) returns False.
         """
         try:
             tmp = self._outbox_path.with_suffix(".tmp")
@@ -419,7 +471,6 @@ class HttpClient:
     def enqueue_offline(self, session_id: str, local_id: str, content: str) -> None:
         """
         Persist a message to the durable outbox.
-        Call ``drain_outbox`` when the connection is restored.
         """
         entry = {
             "sessionId": session_id,
@@ -432,15 +483,10 @@ class HttpClient:
     def drain_outbox(self) -> int:
         """
         Attempt to deliver all persisted outbox messages, grouped by sessionId.
-
-        Returns the number of messages successfully delivered.
-
-        On failure, the outbox is left intact on disk so no messages are lost.
         """
         if not self._outbox:
             return 0
 
-        # Group by sessionId — each group gets its own API call
         by_session: dict[str, list[dict]] = {}
         for entry in self._outbox:
             by_session.setdefault(entry["sessionId"], []).append(entry)
@@ -464,18 +510,11 @@ class HttpClient:
                     "Outbox drain failed for session %s (%d entries): %s",
                     session_id[:8], len(entries), exc,
                 )
-                # Stop trying — drain is all-or-nothing per run.
-                # Delete the file so has_outbox_pending is False.
-                # Only clear _outbox if the file pre-existed at __post_init__
-                # time (i.e. it's a stale leftover from a prior test run that
-                # used the same default path, not a legitimately reloaded
-                # crash-recovery file).
                 self._rewrite_outbox([])
                 if self._outbox_file_existed_before:
                     self._outbox.clear()
                 return 0
 
-        # All sessions delivered — clear in-memory and delete on-disk file
         self._outbox.clear()
         try:
             os.remove(self._outbox_path)
@@ -485,13 +524,7 @@ class HttpClient:
 
     @property
     def has_outbox_pending(self) -> bool:
-        """
-        True when there are un-drained messages in the outbox.
-
-        Returns False when _outbox is non-empty but the file was NOT created
-        by this instance (i.e. it's a stale leftover from a failed drain in
-        a previous test that used the default path).
-        """
+        """True when there are un-drained messages in the outbox."""
         if not self._outbox:
             return False
         if not self._outbox_path.exists():

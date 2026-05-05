@@ -488,12 +488,21 @@ private struct QRPairingContentView: View {
             qrImage = nil
             return
         }
-        // New payload format: {server, code}. iPhone parses these and calls
-        // POST /v1/pairing/code/redeem.
-        let payload: [String: String] = [
+        // New payload format: {server, code, isModern}. iPhone parses these and calls
+        // POST /v1/pairing/code/redeem. isModern flag required by CodeLight iOS app.
+        let shortCodeValue = shortCode ?? ""
+        let payload: [String: Any] = [
             "server": url,
-            "code": shortCode ?? "",
+            "code": shortCodeValue,
+            "isModern": true,
         ]
+
+        // DEBUG: log payload so we can verify what's in the QR
+        if let jsonData = try? JSONSerialization.data(withJSONObject: payload),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            try? jsonString.write(toFile: "/tmp/qr_payload.json", atomically: true, encoding: .utf8)
+            print("[QR] payload: \(jsonString)")
+        }
 
         guard let jsonData = try? JSONSerialization.data(withJSONObject: payload),
               let jsonString = String(data: jsonData, encoding: .utf8) else { return }
@@ -961,9 +970,11 @@ struct PairPhonePanelView: View {
             qrImage = nil
             return
         }
-        let payload: [String: String] = [
+        // Payload includes isModern flag for CodeLight iOS compatibility.
+        let payload: [String: Any] = [
             "server": url,
             "code": shortCode ?? "",
+            "isModern": true,
         ]
         guard let jsonData = try? JSONSerialization.data(withJSONObject: payload),
               let jsonString = String(data: jsonData, encoding: .utf8) else { return }

@@ -176,7 +176,7 @@ final class SSHHostStore: ObservableObject {
             // Race the deployment against a 2-minute timeout as safety net.
             let deployError: String? = await withTaskGroup(of: String?.self) { group in
                 group.addTask {
-                    await HookInstaller.deployToSSHHost(
+                    await deployToSSHHost(
                         host: host,
                         macIP: macIP,
                         psk: psk,
